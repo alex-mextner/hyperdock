@@ -324,6 +324,9 @@ export let Dock = GObject.registerClass(
         lo?.cancel(autohider._debounceCheckSeq);
         autohider._animationSeq = null;
         autohider._debounceCheckSeq = null;
+        // a raw GLib source, not on hi/lo: Shell disposing the dock must not
+        // leave it to fire show() on a dead dock
+        autohider._revealDwell?.cancel();
       }
     }
 
