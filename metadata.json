@@ -7,8 +7,5 @@
   "uuid": "hyperdock@alex-mextner.github.com",
   "schema-id": "org.gnome.shell.extensions.hyperdock",
   "gettext-domain": "hyperdock",
-  "donations": {
-    "buymeacoffee": "icedman"
-  },
   "version": 100
 }
