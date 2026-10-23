@@ -1,3 +1,5 @@
+'use strict';
+
 // "Remove from Dock" in the Shell AppMenu of an app icon (macOS Dock >
 // Options > Remove from Dock), for the recent apps: they are not pinned, so
 // Unpin does not apply, and not running, so neither does Quit.

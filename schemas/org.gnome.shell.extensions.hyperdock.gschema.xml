@@ -415,7 +415,7 @@
     <key type="b" name="drag-off-remove">
         <default>false</default>
         <summary>Drag icons off the dock to remove them</summary>
-        <description>Dragging a pinned or recent app icon away from the dock shows "Remove"; dropping it there unpins the app (a recent app leaves the recents) with a poof, as on macOS.</description>
+        <description>Drag an app icon off the dock and hold it there for about a second: "Remove" shows, and letting go takes the icon off the dock with a poof, as on macOS (a pinned app is unpinned, a recent app leaves the recents). Letting go sooner, or back over the dock, keeps the icon.</description>
     </key>
     <key type="b" name="background-menu">
         <default>false</default>

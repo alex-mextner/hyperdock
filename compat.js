@@ -319,3 +319,22 @@ export function appMenuAfterPinIndex(menu) {
   const at = anchor && items ? items.indexOf(anchor) : -1;
   return at >= 0 ? at + 1 : undefined;
 }
+
+/**
+ * Make the drag that `draggable` is starting carry `appIcon` instead of the
+ * actor the press landed on. The Shell reads `draggable.actor._delegate` for
+ * the drag actor and as the drag source right after emitting 'drag-begin',
+ * so this only works from a 'drag-begin' handler.
+ *
+ * @param {object} draggable Shell DND _Draggable that is starting a drag
+ * @param {object} appIcon Shell AppIcon to drag instead
+ * @returns {Function} undoes the retarget; call it when the drag ends
+ */
+export function retargetDrag(draggable, appIcon) {
+  const actor = draggable.actor;
+  const own = actor._delegate;
+  actor._delegate = appIcon;
+  return () => {
+    actor._delegate = own;
+  };
+}
