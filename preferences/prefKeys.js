@@ -64,7 +64,8 @@ export let PrefKeys = class {
           settings.set_boolean(name, value);
           break;
         }
-        case 'dropdown': {
+        case 'dropdown':
+        case 'int': {
           settings.set_int(name, value);
           break;
         }
@@ -140,6 +141,7 @@ export let PrefKeys = class {
             key.object.set_selected(key.value);
             break;
           case 'scale':
+          case 'int':
           case 'string':
             key.object.set_value(key.value);
             break;
@@ -191,7 +193,8 @@ export let PrefKeys = class {
           key.value = settings.get_boolean(name);
           break;
         }
-        case 'dropdown': {
+        case 'dropdown':
+        case 'int': {
           key.value = settings.get_int(name);
           break;
         }
@@ -231,7 +234,8 @@ export let PrefKeys = class {
               key.value = settings.get_boolean(name);
               break;
             }
-            case 'dropdown': {
+            case 'dropdown':
+            case 'int': {
               key.value = settings.get_int(name);
               break;
             }
@@ -313,6 +317,14 @@ export let PrefKeys = class {
             let index = w.get_selected();
             let value = key.maps && index in key.maps ? key.maps[index] : index;
             self.setValue(name, value);
+          });
+          break;
+        }
+        case 'int': {
+          // AdwSpinRow: its adjustment holds whole numbers
+          signal_id = key.object.connect('notify::value', (w) => {
+            if (self._syncing) return;
+            self.setValue(name, Math.round(w.get_value()));
           });
           break;
         }

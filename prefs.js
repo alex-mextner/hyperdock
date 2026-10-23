@@ -427,6 +427,7 @@ export default class Preferences extends ExtensionPreferences {
             this._settings.set_boolean(k, v);
             break;
           case 'dropdown':
+          case 'int':
             this._settings.set_int(k, v);
             break;
           case 'scale':

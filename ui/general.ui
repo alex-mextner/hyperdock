@@ -180,6 +180,13 @@
           </object>
         </child>
         <child>
+          <object class="AdwSpinRow" id="reveal-delay-ms">
+            <property name="title" translatable="yes">Reveal Delay</property>
+            <property name="subtitle" translatable="yes">Milliseconds the pointer must rest on the screen edge before a hidden dock appears. 0 reveals at once.</property>
+            <property name="adjustment">reveal-delay-adjust</property>
+          </object>
+        </child>
+        <child>
           <object class="AdwEntryRow" id="toggle-autohide-shortcut">
             <property name="title" translatable="yes">Toggle Hiding Shortcut (e.g. &lt;Super&gt;&lt;Alt&gt;d, comma-separated)</property>
           </object>
@@ -362,5 +369,12 @@
       <item translatable="yes">None</item>
       <item translatable="yes">Bounce</item>
     </items>
+  </object>
+  <object class="GtkAdjustment" id="reveal-delay-adjust">
+    <property name="lower">0</property>
+    <property name="upper">2000</property>
+    <property name="step-increment">50</property>
+    <property name="page-increment">100</property>
+    <property name="value">300</property>
   </object>
 </interface>

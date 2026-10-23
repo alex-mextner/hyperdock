@@ -149,6 +149,12 @@ export let AutoHide = class {
     }
   }
 
+  // pressure-sense changed: a dwell that already elapsed must not wait for
+  // the pointer to leave and re-enter the strip
+  recheckReveal() {
+    this._revealDwell?.recheck();
+  }
+
   _revealDelayMs() {
     return this.extension.reveal_delay_ms ?? DEFAULT_REVEAL_DELAY_MS;
   }

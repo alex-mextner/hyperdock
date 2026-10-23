@@ -70,6 +70,12 @@ export let RevealDwell = class {
     this._tryReveal();
   }
 
+  // A reveal condition changed while the pointer rests on the strip (pressure
+  // sense switched off): decide again without waiting for the next enter.
+  recheck() {
+    this._tryReveal();
+  }
+
   // Pointer left the strip, the dock was shown by another path, or the
   // autohider is being disabled: drop the timer and all progress.
   cancel() {

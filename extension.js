@@ -96,6 +96,7 @@ const ACTION_ORDER = [
   'animate_preview',
   'animate',
   'window_feedback',
+  'autohide_reveal',
 ];
 
 const REACTIONS = Object.freeze({
@@ -195,7 +196,7 @@ const REACTIONS = Object.freeze({
   'glass-blur': ['glass', 'animate'],
   'glass-refraction': ['glass', 'animate'],
   'glass-rim': ['glass', 'animate'],
-  'pressure-sense': [],
+  'pressure-sense': ['autohide_reveal'],
   'downloads-icon': ['layout', 'animate_refresh'],
   'documents-icon': ['layout', 'animate_refresh'],
   'trash-icon': ['trash_style', 'layout', 'animate_refresh'],
@@ -816,6 +817,8 @@ export default class HyperdockExt extends Extension {
       },
       animate: () => this.animate(),
       window_feedback: () => this.windowFeedback?.update(),
+      autohide_reveal: () =>
+        this._autohiders().forEach((autohider) => autohider?.recheckReveal()),
     };
 
     for (const action of ACTION_ORDER) {
