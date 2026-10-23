@@ -51,11 +51,6 @@
         <summary>Bounce apps that need attention</summary>
         <description>While an unfocused app asks for attention (a window demands attention or is urgent), its icon keeps bouncing and an autohidden dock stays shown, as on macOS.</description>
     </key>
-    <key type="b" name="lamp-app-animation">
-        <default>false</default>
-        <summary>Minimize app lamp animation</summary>
-        <description>Minimize app genie on a lamp animation.</description>
-    </key>
     <key type="b" name="minimize-to-icon">
         <default>false</default>
         <summary>Minimize into the app icon</summary>

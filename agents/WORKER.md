@@ -672,7 +672,6 @@ Phase 2-5 cards are *stubs*: the Orchestrator expands a stub into a full card (s
     - `'animate'`: `this.animate()`
     - `'animate_preview'`: `if (this.animate_icons) this.animate({ preview: true })`
     - `'animate_refresh'`: `this.animate({ refresh: true })`
-    - `'compiz'`: `this.integrations.hookCompiz()`
     - `'bms'`: `this.integrations.hookBms()`
     - `'mounts'`: `this.services.checkMounts(); this.services._commitMounts()`
     - `'downloads_setup'`: `this.services.setupDownloads()`

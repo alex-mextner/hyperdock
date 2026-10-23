@@ -61,12 +61,6 @@ export const SettingsKeys = (patch) => {
       default_value: false,
       widget_type: 'switch',
     },
-    'lamp-app-animation': {
-      default_value: false,
-      widget_type: 'switch',
-      key_maps: {},
-      // test: { values: [0, 1] },
-    },
     'minimize-to-icon': {
       default_value: false,
       widget_type: 'switch',

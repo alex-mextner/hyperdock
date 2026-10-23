@@ -64,7 +64,6 @@ const ANIM_INTERVAL_PAD = 15;
 const RECENT_APPS_KEPT = 10;
 
 const ACTION_ORDER = [
-  'compiz',
   'bms',
   'blurred_bg',
   'glass',
@@ -100,7 +99,6 @@ const ACTION_ORDER = [
 ];
 
 const REACTIONS = Object.freeze({
-  'lamp-app-animation': ['compiz'],
   'minimize-to-icon': ['window_feedback'],
   'urgent-bounce': ['window_feedback'],
   'minimize-effect': ['window_feedback'],
@@ -762,7 +760,6 @@ export default class HyperdockExt extends Extension {
     this._pendingReactions = new Set();
 
     const handlers = {
-      compiz: () => this.integrations?.hookCompiz(),
       bms: () => this.integrations?.hookBms(),
       blurred_bg: () => this._updateBlurredBackground(),
       glass: () => {
@@ -896,15 +893,11 @@ export default class HyperdockExt extends Extension {
     Main.extensionManager.connectObject(
       'extensions-loaded',
       (manager) => {
-        this.integrations.hookCompiz(true);
         this.integrations.hookBms(true);
       },
       'extension-state-changed',
       (manager, extension) => {
         switch (extension.uuid) {
-          case 'compiz-alike-magic-lamp-effect@hermes83.github.com':
-            this.integrations.hookCompiz(extension.state == 1);
-            break;
           case 'blur-my-shell@aunetx':
             this.integrations.hookBms(extension.state == 1);
             if (extension.state == 1) {
