@@ -15,9 +15,9 @@
 
 | | |
 |---|---|
-| Name / UUID | Dash2Dock Animated — `dash2dock-lite@icedman.github.com` |
+| Name / UUID | Dash2Dock Animated — `hyperdock@alex-mextner.github.com` |
 | Shell versions | 45, 46, 47, 48, 49, 50 (`metadata.json`), ESM modules, no `session-modes` (disabled on lock screen ⇒ full disable/enable every lock) |
-| Settings schema | `org.gnome.shell.extensions.dash2dock-lite` (97 keys) |
+| Settings schema | `org.gnome.shell.extensions.hyperdock` (97 keys) |
 | Size | ~9.6k LOC JS. Core: `dock.js` 1644, `extension.js` 1226, `animator.js` 1189, `services.js` 772 |
 | Install / run | `make install` → copy to `~/.local/share/gnome-shell/extensions/<uuid>`; `make test-shell` (nested `gnome-shell --devkit`; needs the `mutter-devkit` package for the viewer window, otherwise the shell runs headless) ; `make test-prefs` |
 | Release | `make publish` → `build/` → zip (**omits `themes/`** — bug T-4) |
@@ -361,7 +361,7 @@ Effort: S ≤ 2h, M ≈ ½-1 day, L ≥ 2 days. Order within a phase = recommend
 - Lock/unlock 5× and toggle extension 20× → R-0a counts stable.
 - Dock positions: bottom/left/right/top × autohide on/off × dodge on/off × fullscreen app × overview.
 - Multi-monitor: preference 0/1, hotplug, scale 1/2 (`make test-shell2`).
-- Prefs: open/close without changing anything ⇒ `dconf dump /org/gnome/shell/extensions/dash2dock-lite/` unchanged.
+- Prefs: open/close without changing anything ⇒ `dconf dump /org/gnome/shell/extensions/hyperdock/` unchanged.
 - `CHECKLIST.md` visual checks.
 
 ## 9. Agent workflow

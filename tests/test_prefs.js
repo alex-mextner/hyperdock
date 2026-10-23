@@ -176,7 +176,7 @@ function dump(n, l) {
 }
 
 let app = new Adw.Application({
-  application_id: 'com.dash2dock-lite.GtkApplication',
+  application_id: 'com.hyperdock.GtkApplication',
 });
 
 app.connect('activate', (me) => {
@@ -203,7 +203,7 @@ app.connect('activate', (me) => {
 
   let menu_util = builder.get_object('menu_util');
   w.add(menu_util);
-  w.title = 'Dash2Dock Animated';
+  w.title = 'Hyperdock';
 
   let headerbar = find(w, 'AdwHeaderBar');
   if (!headerbar) {
@@ -219,15 +219,15 @@ app.connect('activate', (me) => {
   const actions = [
     {
       name: 'open-bug-report',
-      link: 'https://github.com/icedman/dash2dock-lite/issues',
+      link: 'https://github.com/alex-mextner/hyperdock/issues',
     },
     {
       name: 'open-readme',
-      link: 'https://github.com/icedman/dash2dock-lite',
+      link: 'https://github.com/alex-mextner/hyperdock',
     },
     {
       name: 'open-license',
-      link: 'https://github.com/icedman/dash2dock-lite/blob/master/LICENSE',
+      link: 'https://github.com/alex-mextner/hyperdock/blob/mac-tahoe/LICENSE',
     },
   ];
 

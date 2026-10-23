@@ -5,4 +5,4 @@ Type=Application
 Name=Recent Files
 Exec=nautilus recent:///
 Icon=folder-recent
-StartupWMClass=recent-dash2dock-lite
+StartupWMClass=recent-hyperdock

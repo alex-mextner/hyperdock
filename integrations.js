@@ -1,6 +1,6 @@
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
-// these are hacks to make Dash2Dock Animated compatible with other Extensions
+// these are hacks to make Hyperdock compatible with other Extensions
 //
 export const Integrations = class {
   enable() {

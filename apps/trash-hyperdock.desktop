@@ -5,10 +5,10 @@ Type=Application
 Name=Trash
 Exec=xdg-open trash:///
 Icon=user-trash
-StartupWMClass=trash-dash2dock-lite
+StartupWMClass=trash-hyperdock
 Actions=trash
 
 [Desktop Action trash]
 Name=Empty Trash
-Exec={extension_path}/dash2dock-lite@icedman.github.com/apps/empty-trash.sh
+Exec={extension_path}/hyperdock@alex-mextner.github.com/apps/empty-trash.sh
 Terminal=true

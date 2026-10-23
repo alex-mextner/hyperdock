@@ -66,9 +66,9 @@ Run each agent with a fresh context, so the Auditor is independent of the Worker
 
 - **In Zed:** use `spawn_agent` (one call at a time — never run Worker and Auditor in parallel, they share the working tree):
   - Worker — label `WORKER <task>`, message:
-    `You are the WORKER. Read agents/WORKER.md fully, then agents/D2DA.md sections it references, and execute "Current Assignment". Follow the rules and procedure exactly; finish by writing the Report section in agents/WORKER.md. Project root: dash2dock-lite.`
+    `You are the WORKER. Read agents/WORKER.md fully, then agents/D2DA.md sections it references, and execute "Current Assignment". Follow the rules and procedure exactly; finish by writing the Report section in agents/WORKER.md. Project root: hyperdock.`
   - Auditor — **new session every cycle**, label `AUDITOR <task>`, message:
-    `You are the AUDITOR. Read agents/AUDITOR.md fully, then agents/WORKER.md (Current Assignment, the task card, Report) and agents/D2DA.md. Audit the working-tree changes for this cycle, run all gates, and either commit (PASS) or write a rework list (FAIL). Update Last verdict and append to the Audit Log. Project root: dash2dock-lite.`
+    `You are the AUDITOR. Read agents/AUDITOR.md fully, then agents/WORKER.md (Current Assignment, the task card, Report) and agents/D2DA.md. Audit the working-tree changes for this cycle, run all gates, and either commit (PASS) or write a rework list (FAIL). Update Last verdict and append to the Audit Log. Project root: hyperdock.`
   - Rework: follow up in the **Worker's existing session** with: `Audit FAILED — read agents/AUDITOR.md "Last verdict", fix every rework item, re-verify, update your Report. Attempt <k>.` Bump `Attempt:` in §4 first.
 - **Manually (other tools / human-driven):** open a new chat, paste the same message, with the agent file attached.
 
@@ -237,7 +237,7 @@ Items the agents can't see. The human runs `make test-shell` (needs `mutter-devk
 | 1.6 | 1b03ca7 | Tint/monochrome icon effect on, then disable extension ⇒ effect gone | |
 | 1.7 | 0821a56 | Two USB sticks (same label) ⇒ two icons with real names; unmount one removes only it; remount/rename updates label | |
 | 1.8 | 3311461 | Prefs → diagnostics / self-test button still runs diagnostics | |
-| 1.9 | 5840f29 | `make test-prefs`: `dconf dump /org/gnome/shell/extensions/dash2dock-lite/` identical before/after open+close, preferred monitor ≠ first (a new `msg-to-ext=''` line is a known nit) | |
+| 1.9 | 5840f29 | `make test-prefs`: `dconf dump /org/gnome/shell/extensions/hyperdock/` identical before/after open+close, preferred monitor ≠ first (a new `msg-to-ext=''` line is a known nit) | |
 | 1.9 | 5840f29 | Pressure and scroll sliders move independently | |
 | 1.9 | 5840f29 | Reset and a theme preset update the widgets, incl. colors | |
 | 1.9 | 5840f29 | Cancel the downloads-folder dialog ⇒ old path kept; monitor dropdown shows the saved monitor | |

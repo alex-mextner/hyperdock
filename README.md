@@ -1,13 +1,13 @@
-# Dash2Dock Animated
+# Hyperdock
 
 A GNOME Shell 40+ Extension
 
 [!["Buy Me A Coffee"](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://www.buymeacoffee.com/icedman)
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-F16061?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/icedman)
 
-![Contributors](https://img.shields.io/github/contributors/icedman/dash2dock-lite?color=dark-green) ![Forks](https://img.shields.io/github/forks/icedman/dash2dock-lite?style=social) ![Stargazers](https://img.shields.io/github/stars/icedman/dash2dock-lite?style=social) ![Issues](https://img.shields.io/github/issues/icedman/dash2dock-lite) ![License](https://img.shields.io/github/license/icedman/dash2dock-lite) ![GitHub Downloads](https://img.shields.io/github/downloads/icedman/dash2dock-lite/total)
+![Contributors](https://img.shields.io/github/contributors/alex-mextner/hyperdock?color=dark-green) ![Forks](https://img.shields.io/github/forks/alex-mextner/hyperdock?style=social) ![Stargazers](https://img.shields.io/github/stars/alex-mextner/hyperdock?style=social) ![Issues](https://img.shields.io/github/issues/alex-mextner/hyperdock) ![License](https://img.shields.io/github/license/alex-mextner/hyperdock) ![GitHub Downloads](https://img.shields.io/github/downloads/alex-mextner/hyperdock/total)
 
-![Screen Shot](https://raw.githubusercontent.com/icedman/dash2dock-lite/main/screenshots/Screenshot%20from%202024-03-19%2015-31-27.png)
+![Screen Shot](https://raw.githubusercontent.com/alex-mextner/hyperdock/mac-tahoe/screenshots/Screenshot%20from%202024-03-19%2015-31-27.png)
 
 ### Announcement/Warning
 
@@ -59,12 +59,12 @@ If you prefer strictly human-written code, feel free to skip this extension. If 
 Run the one-line installer in your terminal. It automatically detects your GNOME Shell version, presents compatible releases, downloads, installs, and offers to enable the extension:
 
 ```bash
-bash <(curl -sSL https://raw.githubusercontent.com/icedman/dash2dock-lite/main/install.sh)
+bash <(curl -sSL https://raw.githubusercontent.com/alex-mextner/hyperdock/mac-tahoe/install.sh)
 ```
 or
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/icedman/dash2dock-lite/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/alex-mextner/hyperdock/mac-tahoe/install.sh | bash
 ```
 
 ---
@@ -73,26 +73,13 @@ curl -sSL https://raw.githubusercontent.com/icedman/dash2dock-lite/main/install.
 
 1. Clone this repository:
    ```bash
-   git clone https://github.com/icedman/dash2dock-lite.git
+   git clone https://github.com/alex-mextner/hyperdock.git
    ```
 2. Build and install using the `Makefile`:
    ```bash
-   cd dash2dock-lite
+   cd hyperdock
    make
    ```
-
-#### Using the AUR (Arch User Repository)
-
-*This requires an Arch-based distribution to work:*
-```bash
-git clone https://aur.archlinux.org/gnome-shell-extension-dash2dock-lite.git
-cd gnome-shell-extension-dash2dock-lite
-makepkg -si
-```
-
-#### From GNOME Extensions Repository
-
-Visit [https://extensions.gnome.org/extension/4994/dash2dock-lite/](https://extensions.gnome.org/extension/4994/dash2dock-lite/)
 
 ## Theme Support
 
@@ -138,7 +125,7 @@ Alternatively, you may override icons via app ID:
 }
 ```
 
-Check the logs to see the icon names currently being used by Dash2Dock Animated. Search for log text such as:
+Check the logs to see the icon names currently being used by Hyperdock. Search for log text such as:
 
 ```sh
 Icon created "user-trash"
@@ -171,13 +158,13 @@ The blurred background feature requires **ImageMagick** to be installed on the s
 
 ## GNOME 42, 43, 44 Support
 
-To build and install Dash2Dock Animated for older versions (prior to GNOME 45), run:
+To build and install Hyperdock for older versions (prior to GNOME 45), run:
 
 ```bash
 make g44
 ```
 
-`make build-g44` builds the same copy into `./build` without installing it. The install targets (`make`, `make install`, `make g44`, `make install-zip`) refuse to run when `~/.local/share/gnome-shell/extensions/dash2dock-lite@icedman.github.com` is a symlink, since installing would empty the checkout it points to; remove the link first to install a copy.
+`make build-g44` builds the same copy into `./build` without installing it. The install targets (`make`, `make install`, `make g44`, `make install-zip`) refuse to run when `~/.local/share/gnome-shell/extensions/hyperdock@icedman.github.com` is a symlink, since installing would empty the checkout it points to; remove the link first to install a copy.
 
 ## Bug Reporting
 
@@ -185,7 +172,7 @@ When reporting bugs, please include the following details:
 
 * Linux Flavor/Distribution and version
 * GNOME version (e.g. 45.xx)
-* Dash2Dock Animated release number
+* Hyperdock release number
 
 Check for any exceptions in the logs by running the following in the terminal:
 
@@ -193,7 +180,7 @@ Check for any exceptions in the logs by running the following in the terminal:
 journalctl /usr/bin/gnome-shell -f -o cat
 ```
 
-To check for incompatibilities with other extensions, try running Dash2Dock Animated with all other extensions disabled.
+To check for incompatibilities with other extensions, try running Hyperdock with all other extensions disabled.
 
 To check for lag or inefficiency, run the following in the terminal and observe `gnome-shell` CPU usage:
 
@@ -215,3 +202,22 @@ Please be specific about the errors encountered, and attach screenshots if possi
 ## License
 
 Distributed under the GPL 3.0 License. See [LICENSE](LICENSE) for more information.
+
+## Migrating from dash2dock-lite
+
+Hyperdock is a separate extension from upstream Dash2Dock Animated and no longer shares its identity:
+
+| | upstream | hyperdock |
+|---|---|---|
+| uuid | `dash2dock-lite@icedman.github.com` | `hyperdock@alex-mextner.github.com` |
+| schema id | `org.gnome.shell.extensions.dash2dock-lite` | `org.gnome.shell.extensions.hyperdock` |
+| dconf path | `/org/gnome/shell/extensions/dash2dock-lite/` | `/org/gnome/shell/extensions/hyperdock/` |
+
+Disable the old extension, then carry your settings over:
+
+```bash
+dconf dump /org/gnome/shell/extensions/dash2dock-lite/ \
+  | dconf load /org/gnome/shell/extensions/hyperdock/
+```
+
+`ubuntu-tweak apply` does this automatically.
