@@ -1,83 +1,117 @@
 # Hyperdock
 
-A macOS-style dock for GNOME Shell 50
+A macOS-style dock for GNOME Shell 50 (Ubuntu 26.04, Wayland): Liquid Glass platter, icon magnification,
+genie minimize, folder stacks, a glass Trash that shows what is in it, and Finder-style drag and drop.
 
-Based on [Dash2Dock Animated](https://github.com/icedman/dash2dock-lite) by icedman (GPL-3.0).
+Hyperdock is a fork of [Dash2Dock Animated](https://github.com/icedman/dash2dock-lite) by icedman (GPL-3.0),
+built for GNOME 50 only. Original authorship and the GPL-3.0 license are kept; see [LICENSE](LICENSE).
 
-![Contributors](https://img.shields.io/github/contributors/alex-mextner/hyperdock?color=dark-green) ![Forks](https://img.shields.io/github/forks/alex-mextner/hyperdock?style=social) ![Stargazers](https://img.shields.io/github/stars/alex-mextner/hyperdock?style=social) ![Issues](https://img.shields.io/github/issues/alex-mextner/hyperdock) ![License](https://img.shields.io/github/license/alex-mextner/hyperdock) ![GitHub Downloads](https://img.shields.io/github/downloads/alex-mextner/hyperdock/total)
+![Hyperdock on GNOME 50](docs/images/dock.png)
 
-![Screen Shot](https://raw.githubusercontent.com/alex-mextner/hyperdock/mac-tahoe/screenshots/Screenshot%20from%202024-03-19%2015-31-27.png)
+![Magnification, stack, genie minimize](docs/images/demo.gif)
 
-### Announcement/Warning
+| Folder stack (Grid view) | Glass Trash (empty, 4 and 36 items) |
+|---|---|
+| ![Screenshots stack as a Grid popover](docs/images/stack.png) | ![Glass Trash](docs/images/trash.png) |
 
-Maintenance and GNOME version compatibility updates are now primarily assisted by AI.
+The images come from an isolated headless GNOME Shell 50.1 session (1920x1080).
 
-Due to GNOME Extensions reviewer policies regarding AI tooling, updates will no longer be submitted to extensions.gnome.org and will be published exclusively through this repository. Releases will include simple installation instructions.
+## What is different
 
-If you prefer strictly human-written code, feel free to skip this extension.
+Every row: what upstream Dash2Dock Animated does, then what Hyperdock does. All new features are settings; the
+macOS look is a preset (the [ubuntu-tweaks](https://github.com/alex-mextner/ubuntu-tweaks) `dock.ini`), upstream
+defaults are kept and nothing of upstream was removed.
 
-### Notice
+### Hyperdock vs Dash2Dock Animated
 
-* Supports GNOME Shell 50 only (Ubuntu 26.04). For older GNOME versions use the upstream project credited above.
+| Area | Dash2Dock Animated | Hyperdock |
+|---|---|---|
+| Background | Flat background, or [Blur my Shell](https://github.com/aunetx/blur-my-shell) | Liquid Glass platter: GPU blur, edge refraction, bright rim, soft shadow, drawn by the dock itself |
+| Colors | Fixed colors | Adaptive contrast: Apps grid, separators and running dots follow the wallpaper's brightness |
+| Separators | Drift, about 7 px off the platter centre in a vertical dock | Centered on the platter at rest and while magnified |
+| Trash | Theme trash icon | Glass bin like macOS 26: fill level grows with the item count, newest 5 items shown as thumbnails or type cards |
+| Folder stacks | Downloads only; fan only, "Open Window" menu, box overlapping the dock | Any folder is a stack (`folder-stacks`); Fan, Grid and List views, Sort by, Display as Folder/Stack, picture previews, hidden files skipped, per-stack menu; the popover floats above the dock with a notch aimed at the icon; "Open" opens the folder itself |
+| Badges | No badge by default, a 2 px dot | Red count badge, Unity LauncherEntry counts, progress bar and urgent state |
+| Minimize | Into the top-left corner, no genie, no tiles | Own GPU genie effect (Magic Lamp is broken on Mutter 50), minimize into the app icon or into a tile of the window left of the Trash; click the tile to restore |
+| Bounce | On dock click only, nothing for attention | Launch bounce from anywhere (Super+N, app grid, terminal), bounce for apps that need attention, which also reveals a hidden dock |
+| Drag and drop | Not possible on Wayland | Drop files on Trash (moves to trash), on an app (opens with it) or on a stack (moves or copies); drag an icon off the dock to remove it with a poof; spring-loading raises an app under a dragged file |
+| Windows | Per-icon actions | Show All Windows (per-app spread), isolate workspaces, recent apps section |
+| Input | Click, scroll | Click-minimizes toggle, Shift+click new window, Open at Login in the icon menu, dock background menu, hide shortcut (Super+Alt+D), Ctrl+Alt+Tab keyboard focus into the dock, Super+number overlay |
+| Autohide | Reveals as soon as the pointer is near the edge | Reveals only after the pointer rests on the edge for `reveal-delay-ms` (default 300 ms) |
+| Stability | - | Fixes for a Shell crash when removing an icon under the pointer, inotify exhaustion, a GNOME 50 right-click exception, a layout recursion hang, stack paths with special characters, timers surviving Shell exit; `make install` refuses to install over a symlinked extension dir |
+| GNOME versions | 42 to 50 | 50 only: the older-version code and build were removed |
+| Donations | QR code and links to the upstream author | None; settings link to this repository and credit upstream |
 
-### Features
+### Hyperdock vs Dash to Dock (Ubuntu Dock)
 
-* Multi-monitor support (new!)
-* Dash docked at the desktop
-* Animated dock icons
-* Resize icons
-* Autohide/intellihide; the hidden dock needs the pointer resting on the screen edge for `reveal-delay-ms` (default 300 ms, 0-2000, 0 = instant; with pressure sense the push must also be reached)
-* Dock positions: bottom, top, left, right
-* Scroll wheel to cycle windows
-* Click to maximize/minimize windows
-* Style top panel
-* Panel mode
-* Show/Hide Apps icon
-* Analog clock
-* Dynamic calendar
-* Dynamic trash icon
-* Mounted devices
-* Downloads icon with fan animation (new!)
-* Icon color effects (Tint, Monochrome)
-* Custom icons
+[Dash to Dock](https://github.com/micheleg/dash-to-dock) is the extension behind Ubuntu Dock: a configurable
+panel-style dock. Hyperdock is a different kind of dock:
+
+| Dash to Dock | Hyperdock |
+|---|---|
+| Flat panel-style bar | Floating centered Liquid Glass platter |
+| No icon magnification | Magnification under the pointer, bounce on launch |
+| Optional Trash and mounted-volume icons; no folder stacks, no minimized-window tiles | Folder stacks, a Trash that shows its contents, mounted volumes and minimized-window tiles live in the dock |
+| Shell's default minimize animation | Genie minimize |
+| Works on GNOME versions before 50 | GNOME 50 only |
+
+Hyperdock replaces Ubuntu Dock; it does not run alongside it (the ubuntu-tweaks module disables
+`ubuntu-dock@ubuntu.com`).
+
+## Features
+
+Everything above is a setting in the preferences. Also inherited from upstream:
+
+* Multi-monitor support
+* Dock positions: bottom, top, left, right; autohide/intellihide
+* Scroll wheel to cycle windows; click to maximize/minimize windows
+* Style top panel, panel mode, show/hide Apps icon
+* Analog clock, dynamic calendar, mounted devices
+* Icon color effects (Tint, Monochrome), custom icons
 
 ### Third-Party Compatibility
 
-* [Compiz Magic Lamp Animation](https://github.com/PR3SIDENT/gnome-shell-extension-compiz-alike-magic-lamp-effect)
 * [Blur my Shell](https://github.com/aunetx/blur-my-shell)
 
-### Prerequisites
+## Screenshots still to capture
 
-* GNOME Shell (version 42+)
+The images above are real captures from an isolated headless GNOME Shell 50.1 session. These have no capture
+yet and need a live session (light/dark wallpapers, a dock with notifications, several open windows):
 
-### Installation
+- [ ] Liquid Glass on a light wallpaper and on a dark wallpaper (adaptive contrast)
+- [ ] Folder stack as Fan and as List popover
+- [ ] Count badge and progress bar on an icon
+- [ ] Show All Windows (per-app spread)
+- [ ] Minimized-window tiles in the dock (still image next to the Trash)
+- [ ] Side-by-side with the macOS 26 dock
 
-#### Quick Install (Recommended)
+## Installation
 
-Run the one-line installer in your terminal. It automatically detects your GNOME Shell version, presents compatible releases, downloads, installs, and offers to enable the extension:
+Requires GNOME Shell 50 (Ubuntu 26.04). For older GNOME versions use upstream Dash2Dock Animated.
+
+### With ubuntu-tweaks (recommended)
+
+[ubuntu-tweaks](https://github.com/alex-mextner/ubuntu-tweaks) vendors Hyperdock as a submodule, disables Ubuntu Dock,
+applies the macOS preset (folder stacks, glass, genie, file drops) and migrates settings from a previous
+dash2dock-lite install:
 
 ```bash
-bash <(curl -sSL https://raw.githubusercontent.com/alex-mextner/hyperdock/mac-tahoe/install.sh)
+curl -fsSL https://raw.githubusercontent.com/alex-mextner/ubuntu-tweaks/main/scripts/bootstrap.sh | sh -s -- --yes
 ```
-or
+
+Log out and back in afterwards: GNOME on Wayland loads extension code only at login.
+
+### Manual
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/alex-mextner/hyperdock/mac-tahoe/install.sh | bash
+git clone https://github.com/alex-mextner/hyperdock.git
+cd hyperdock
+make install                              # compiles the schema and installs into ~/.local/share/gnome-shell/extensions/
+gnome-extensions disable ubuntu-dock@ubuntu.com
+gnome-extensions enable hyperdock@alex-mextner.github.com
 ```
 
----
-
-#### Manual Installation from Source
-
-1. Clone this repository:
-   ```bash
-   git clone https://github.com/alex-mextner/hyperdock.git
-   ```
-2. Build and install using the `Makefile`:
-   ```bash
-   cd hyperdock
-   make
-   ```
+Log out and back in if the dock does not appear. `install.sh` installs a published release zip instead of building from source (once releases exist).
 
 ## Theme Support
 
