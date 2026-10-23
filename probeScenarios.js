@@ -256,11 +256,70 @@ async function recents(ext) {
   if (launched) calculator.request_quit();
 }
 
+// Calendar/Clock auto-pin and the live Minimize Effect switch (#13, #14)
+async function widgets(ext) {
+  const S = 'widgets';
+  const settings = ext._settings;
+  const favorites = Fav.getAppFavorites();
+  const ids = () => favorites.getFavorites().map((a) => a.get_id());
+  // the apps the extension itself detected; the smoke container has neither
+  const CAL = ext.services?.widgetApp('calendar')?.id;
+  const CLOCK = ext.services?.widgetApp('clock')?.id;
+  if (!CAL || !CLOCK) {
+    say({ scenario: S, skipped: 'Calendar and Clocks are not both installed' });
+    return;
+  }
+
+  await closeOverview();
+  await sleep(2000);
+  say({ scenario: S, favoritesBefore: ids() });
+  check(S, 'neither app is pinned to begin with', !ids().includes(CAL) && !ids().includes(CLOCK), ids());
+  await shot('widgets-1-before');
+
+  settings.set_boolean('calendar-icon', true);
+  settings.set_boolean('clock-icon', true);
+  await sleep(3000);
+  say({ scenario: S, favoritesAfter: ids() });
+  check(S, 'Calendar was pinned by switching it on', ids().includes(CAL), ids());
+  check(S, 'Clocks was pinned by switching it on', ids().includes(CLOCK), ids());
+  check(S, 'calendar widget is drawn over its dock item', ext.docks?.[0]?._calendar != null);
+  check(S, 'clock widget is drawn over its dock item', ext.docks?.[0]?._clock != null);
+  check(S, 'the midnight timer is armed', ext.services?._calendarTicker?._handle != null);
+  await shot('widgets-2-pinned');
+
+  // switching off never unpins
+  settings.set_boolean('calendar-icon', false);
+  await sleep(1500);
+  check(S, 'switching Calendar off keeps it pinned', ids().includes(CAL), ids());
+
+  // a pin the user removed must not come back when another switch changes
+  settings.set_boolean('calendar-icon', true);
+  await sleep(1500);
+  favorites.removeFavorite(CAL);
+  await sleep(1500);
+  settings.set_boolean('clock-icon', false);
+  await sleep(1500);
+  check(S, 'toggling Clock does not re-pin a removed Calendar', !ids().includes(CAL), ids());
+  settings.set_boolean('clock-icon', true);
+  await sleep(1500);
+  await shot('widgets-3-after-toggles');
+
+  // Minimize Effect switches without restarting the extension
+  const genie = () => ext.windowFeedback?._genie?.enabled;
+  settings.set_int('minimize-effect', 1);
+  await sleep(1500);
+  check(S, 'Minimize Effect = Genie enables the genie live', genie() === true, genie());
+  settings.set_int('minimize-effect', 0);
+  await sleep(1500);
+  check(S, 'Minimize Effect = Shell disables it live', genie() === false, genie());
+}
+
 // what the scenarios of other modules (layoutScenarios.js) record with
 const helpers = { check, say, sleep, shot, closeOverview };
 
 const SCENARIOS = {
   recents,
+  widgets,
   layout: (ext) => layoutScenario(ext, helpers),
   width: (ext) => widthScenario(ext, helpers),
 };
