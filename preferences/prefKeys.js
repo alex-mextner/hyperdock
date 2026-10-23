@@ -161,7 +161,7 @@ export let PrefKeys = class {
             break;
         }
       } catch (err) {
-        console.error(`d2da: prefs update widget ${name}`, err);
+        console.error('d2da: prefs update widget', name, err);
       }
     });
   }

@@ -5,3 +5,7 @@ dist
 *.zip
 _*.js
 TODO.md
+smoke-out
+visual-out
+release.json
+SHA256SUMS

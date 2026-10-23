@@ -1,0 +1,60 @@
+name: release
+
+# A tag vMAJOR.MINOR.PATCH on a commit of mac-tahoe (or main) publishes a GitHub Release
+# carrying the extension zip, SHA256SUMS and release.json. The tag must equal package.json's
+# version; the full CI runs first. See RELEASES.md for how updaters follow it.
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    name: publish release
+    needs: ci
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+
+      - name: Tag is on an integration branch and matches package.json
+        run: |
+          set -eu
+          git fetch --no-tags origin '+refs/heads/mac-tahoe:refs/remotes/origin/mac-tahoe' '+refs/heads/main:refs/remotes/origin/main'
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/mac-tahoe &&
+             ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::$GITHUB_REF_NAME is not on mac-tahoe or main; tag a merged commit"
+            exit 1
+          fi
+          python3 tools/release_manifest.py check "$GITHUB_REF_NAME"
+
+      - name: Install zip
+        run: sudo apt-get install -y -qq zip
+
+      - name: Build the zips, release.json and SHA256SUMS
+        run: |
+          set -eu
+          tools/publish.sh "${GITHUB_REF_NAME#v}"
+          uuid=$(python3 -c "import json; print(json.load(open('metadata.json'))['uuid'])")
+          ext_zip="./${uuid}.zip"
+          python3 tools/check-package.py --zip "$ext_zip"
+          others=$(find . -maxdepth 1 -name '*.zip' ! -name "${uuid}.zip" -print)
+          # shellcheck disable=SC2086  # zip names have no spaces
+          python3 tools/release_manifest.py manifest "$GITHUB_REF_NAME" "$ext_zip" $others
+
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          gh release create "$GITHUB_REF_NAME" ./*.zip SHA256SUMS release.json \
+            --verify-tag --generate-notes --title "$GITHUB_REF_NAME"

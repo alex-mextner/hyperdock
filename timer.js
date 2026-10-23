@@ -43,7 +43,7 @@ export const Timer = class {
         try {
           keep = this.onUpdate();
         } catch (e) {
-          console.error(`d2da: timer ${this._name} update`, e);
+          console.error('d2da: timer', this._name, 'update', e);
         }
         if (keep && this._timeoutId === sourceId) {
           return GLib.SOURCE_CONTINUE;
@@ -170,7 +170,10 @@ export const Timer = class {
         s.onUpdate(s, this._resolution);
       } catch (e) {
         console.error(
-          `d2da: timer ${this._name} subscriber ${s._name ?? s._id}`,
+          'd2da: timer',
+          this._name,
+          'subscriber',
+          s._name ?? s._id,
           e
         );
       }

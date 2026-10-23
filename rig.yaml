@@ -1,0 +1,56 @@
+# yaml-language-server: $schema=~/xp/rig-cli/schema/rig.schema.json
+# Repo-level rig config for hyperdock. The machine-wide layers (skills, agent hooks, the git-hook
+# dispatcher, MCP) live in ~/.config/rig/config.yaml and are not repeated here.
+#
+# `rig apply commit --only ci` (re)writes the workflows and ci/ scripts below; `rig apply commit
+# --only linters` writes .oxlintrc.json. Never run a bare `rig apply commit` from a worktree: it also
+# reconciles machine-wide state. See docs/CI.md for what each gate does and what is not adopted.
+version: 1
+
+scripts:
+  test: make test
+
+# `origin` of this clone is the upstream project (icedman/dash2dock-lite); repo settings and
+# rulesets for the fork are changed by hand, never by a rig apply that resolves `origin`.
+github:
+  ruleset: { enabled: false }
+  merge: { enabled: false }
+  actions: { enabled: false }
+  ghas: { enabled: false }
+  browser: { enabled: false }
+
+ci:
+  enabled: true
+  items:
+    secret-scan: { enabled: true, tier: block }
+    sast: { enabled: true, tier: block }
+    dependency-review: { enabled: true, tier: block }
+    pr-title-lint: { enabled: true, tier: block }
+
+linters:
+  enabled: true
+  items:
+    oxlint:
+      tool: oxlint
+      role: linter
+      path: .oxlintrc.json
+      content: |
+        {
+          // Second linter next to ESLint (`make lint`): oxlint's `correctness` category, a different
+          // rule engine that catches other bug classes (no-debugger, const-comparisons, use-isnan,
+          // no-self-assign, ...). The anti-slop plugin from agent-tools is TypeScript-only (type
+          // assertions, unknown-typed params), so it has no plain-JS rules to run on a GJS extension.
+          "$schema": "./node_modules/oxlint/configuration_schema.json",
+          "categories": { "correctness": "error" },
+          "plugins": ["oxc", "unicorn", "typescript"],
+          "ignorePatterns": ["build/**", "node_modules/**", "ci/**", "tests/**", "tools/**", "screenshots/**"],
+          "rules": {
+            // Owned by ESLint, where it is a warning with the repo's `_`-prefix convention.
+            "no-unused-vars": "off",
+            // extension.js opens with a `'use strict'` directive expression.
+            "no-unused-expressions": "off",
+            // Spreading `get_children()` snapshots the list so it can be iterated while it is mutated.
+            "unicorn/no-useless-spread": "off",
+            "unicorn/no-useless-fallback-in-spread": "off"
+          }
+        }

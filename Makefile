@@ -1,6 +1,6 @@
 all: build install lint
 
-.PHONY: build install publish check-devkit check-install-dir test-shell test-shell2 check smoke lint check-settings build-g44
+.PHONY: build install publish check-devkit check-install-dir test-shell test-shell2 check smoke lint check-settings build-g44 test ci ci-fast hooks
 
 RUNTIME_DIR ?= $(or $(XDG_RUNTIME_DIR),/run/user/$(shell id -u))
 # gnome-shell writes this at startup as a crash marker; if it is left behind
@@ -44,6 +44,8 @@ install: build check-install-dir
 	rm -rf "$(EXT_DIR)/eslint.config.js"
 	rm -rf "$(EXT_DIR)/package.json"
 	rm -rf "$(EXT_DIR)/package-lock.json"
+	rm -rf "$(EXT_DIR)/ci"
+	rm -rf "$(EXT_DIR)/rig.yaml"
 
 clean:
 	rm -rf ./build
@@ -121,12 +123,14 @@ test-shell-g44: g44
 
 lint:
 	npx eslint .
+	npx oxlint .
 
-# Fast parse-only syntax check of all shipped JS (ESLint: `make lint`).
+# Fast parse-only syntax check of all shipped JS (ESLint: `make lint`). `.js` is ESM
+# because package.json says "type": "module".
 check:
 	find . -path ./node_modules -prune -o -path ./build -prune -o -path ./tests -prune \
-		-o -path ./tools -prune -o -name '*.js' -print \
-		| xargs -n1 node --experimental-default-type=module --check
+		-o -path ./tools -prune -o -path ./ci -prune -o -name '*.js' -print \
+		| xargs -n1 node --check
 	@echo "check: OK"
 
 # schema <-> preferences/keys.js <-> ui/*.ui <-> runtime refs. Exits 1 on
@@ -138,6 +142,22 @@ check-settings:
 # error signatures vs agents/smoke-baseline.txt. See tools/smoke-shell.sh.
 smoke: install
 	tools/smoke-shell.sh 5
+
+# Unit checks (tests/*_check.js under gjs, no GNOME Shell needed).
+test:
+	tools/run-tests.sh
+
+# Everything CI runs; see tools/ci.sh for the stage list and docs/CI.md for the mapping.
+# `ci-fast` is the same minus the nested-shell smoke and the network-bound gates.
+ci:
+	tools/ci.sh all
+
+ci-fast:
+	tools/ci.sh fast
+
+# Wire the tracked git hooks into this clone (idempotent). See docs/CI.md.
+hooks:
+	tools/install-hooks.sh
 
 xml-lint:
 	cd ui ; \

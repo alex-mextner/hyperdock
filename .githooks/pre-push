@@ -1,0 +1,11 @@
+#!/bin/sh
+# pre-push: the fast CI stages (what CI's check job runs), then the machine-wide hooks.
+# The pushed refs arrive on stdin and are forwarded untouched to the machine-wide hook.
+set -u
+cd "$(git rev-parse --show-toplevel)" || exit 1
+echo "pre-push: make ci-fast"
+make --no-print-directory ci-fast </dev/null || {
+	echo "pre-push: ci-fast failed; not pushing red" >&2
+	exit 1
+}
+exec "$(dirname "$0")/chain-global" pre-push "$@"

@@ -577,7 +577,7 @@ export class FileDrops {
     }
     if (!target || !uris.length) return;
     this._perform(target, uris).catch((e) => {
-      console.error(`d2da: file-drops ${target.kind}`, e);
+      console.error('d2da: file-drops', target.kind, e);
     });
   }
 
@@ -596,7 +596,7 @@ export class FileDrops {
             try {
               info.launch_uris_finish(res);
             } catch (e) {
-              console.error(`d2da: file-drops open with ${info.get_id()}`, e);
+              console.error('d2da: file-drops open with', info.get_id(), e);
             }
           }
         );
@@ -628,7 +628,7 @@ export class FileDrops {
                   try {
                     f.trash_finish(res);
                   } catch (e) {
-                    console.error(`d2da: file-drops trash ${uri}`, e);
+                    console.error('d2da: file-drops trash', uri, e);
                   }
                   resolve();
                 }
@@ -686,7 +686,7 @@ export class FileDrops {
             if (move) f.move_finish(res);
             else f.copy_finish(res);
           } catch (e) {
-            console.error(`d2da: file-drops ${move ? 'move' : 'copy'} ${uri}`, e);
+            console.error('d2da: file-drops', move ? 'move' : 'copy', uri, e);
           }
           resolve();
         };

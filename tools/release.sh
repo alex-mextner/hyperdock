@@ -154,7 +154,7 @@ EOF
     VERSION="${VERSION#v}"
 
     echo "==> Packaging extension release v${VERSION}..."
-    VERSION="$VERSION" "$SCRIPT_DIR/publish.sh" "$VERSION"
+    "$SCRIPT_DIR/publish.sh" "$VERSION"
     ;;
 
   publish)

@@ -137,6 +137,7 @@ REC_IDX=""
 while IFS='|' read -r num tag desc url filename is_rec; do
   [ -z "$num" ] && continue
   TAGS[$num]="$tag"
+  # shellcheck disable=SC2034  # filled alongside TAGS/URLS but never read back
   DESCS[$num]="$desc"
   URLS[$num]="$url"
   FILENAMES[$num]="$filename"

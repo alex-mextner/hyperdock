@@ -268,13 +268,16 @@ fi
 # portals) is ignored. Pids, timestamps and numbers are stripped.
 # Shutdown part: JS errors only (criticals and their stack traces are counted
 # above instead).
+# sort -u and comm below must agree with the baseline's order on every machine
+LC_ALL=C
+export LC_ALL
 SIG="$LOG.sig"
 {
 	runlog | grep -E 'JS ERROR|JS WARNING|had error|unable to layout|(GLib-GObject|Gjs|Clutter|St|GLib)-(CRITICAL|WARNING)|TypeError|ReferenceError|extensions/'
 	downlog | grep -E 'JS ERROR|JS WARNING|TypeError|ReferenceError' | grep -v 'CRITICAL'
 } |
 	grep -v -E 'cogl_|GnomeDesktop|portal|transient scope' |
-	sed -E 's/\((gnome-shell|process):[0-9]+\)//; s/[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]+//; s/[0-9]+/N/g; s/^[: ]+//' |
+	sed -E 's/\((gnome-shell|process):[0-9]+\)//; s/[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]+//; s#0x[0-9a-f]+#PTR#g; s#file://[^ ]*/extensions/[^/ ]*/#EXT/#g; s/[0-9]+/N/g; s/^[: ]+//' |
 	sort -u >"$SIG"
 
 if [ "$D2DA_SMOKE_UPDATE" = "1" ]; then

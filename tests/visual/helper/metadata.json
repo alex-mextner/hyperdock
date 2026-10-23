@@ -1,0 +1,6 @@
+{
+  "uuid": "d2da-visual-helper@test.local",
+  "name": "Dock visual test helper",
+  "description": "Test fixture, never shipped: pins the favorites, waits, and saves a screenshot of the stage for tools/visual-shell.sh.",
+  "shell-version": ["50"]
+}
