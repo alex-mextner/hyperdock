@@ -5,7 +5,7 @@ Type=Application
 Name=Volume
 Exec=xdg-open {--mount-path-here--}
 Icon=drive-harddisk-solidstate
-StartupWMClass=mount-dash2dock-lite
+StartupWMClass=mount-hyperdock
 Actions=mount;unmount;
 
 [Desktop Action mount]

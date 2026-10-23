@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Settings consistency checker for Dash2Dock Animated (stdlib only).
+"""Settings consistency checker for Hyperdock (stdlib only).
 
 Cross-checks the four places a setting lives:
 

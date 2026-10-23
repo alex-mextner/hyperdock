@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<schemalist gettext-domain="dash2dock-lite">
-  <schema path="/org/gnome/shell/extensions/dash2dock-lite/" id="org.gnome.shell.extensions.dash2dock-lite">
+<schemalist gettext-domain="hyperdock">
+  <schema path="/org/gnome/shell/extensions/hyperdock/" id="org.gnome.shell.extensions.hyperdock">
     <key type="b" name="debug">
         <default>false</default>
         <summary>Debug Mode</summary>

@@ -1267,7 +1267,7 @@ export let Dock = GObject.registerClass(
         icon: '_recentFilesIcon',
         folder: 'recent:///',
         //! find a way to avoid this
-        path: `${this.extension.path}/apps/recents-dash2dock-lite.desktop`,
+        path: `${this.extension.path}/apps/recents-hyperdock.desktop`,
         // not ready for prime time
         // does not work on gnome 43 (debian)
         show: false, // this.extension.documents_icon,

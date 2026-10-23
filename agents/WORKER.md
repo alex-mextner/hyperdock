@@ -1,6 +1,6 @@
 # WORKER — implements one task card per cycle
 
-> You are the **WORKER** for Dash2Dock Animated (`dash2dock-lite@icedman.github.com`).
+> You are the **WORKER** for Dash2Dock Animated (`hyperdock@alex-mextner.github.com`).
 > You implement **exactly the task in "Current Assignment"** below, then write your **Report** and stop.
 > You do **not** commit, pick tasks, or edit the phase board. The **AUDITOR** (`agents/AUDITOR.md`) reviews and commits;
 > the **ORCHESTRATOR** (`agents/RUN.md`) assigns tasks and rewrites "Current Assignment".
@@ -134,9 +134,9 @@ Phase 2-5 cards are *stubs*: the Orchestrator expands a stub into a full card (s
 #### R-0d — Release via `gnome-extensions pack`
 - **Fixes:** T-4 (zip missing `themes/`), T-7 (dev files in install/zip), part of G5.
 - **Scope:** `Makefile` (`publish`, `install-zip`), `.gitignore`; `git rm --cached schemas/gschemas.compiled` (file stays on disk; it is tracked today).
-- **Do:** `publish` = `gnome-extensions pack --force --extra-source=…` for every runtime file/dir (all root `*.js` except `prefs.js`/`extension.js` which pack adds itself, `apps/`, `effects/`, `preferences/`, `ui/` **without `ui/legacy`**, `themes/`, `stylesheet.css`, `LICENSE`, `CHANGELOG.md`), `--schema=schemas/org.gnome.shell.extensions.dash2dock-lite.gschema.xml`. Gitignore `schemas/gschemas.compiled`, `.antigravitycli/`, `*.shell-extension.zip`, `__pycache__/`. Keep the `g44*` targets (deleted in R-21). `probe.js` is a runtime file (imported by `extension.js`), so it must be in the zip. `eslint.config.js` is a root `*.js` but **must not** be packed (list runtime JS explicitly or filter it out). Make `install` install from the same allow-list (e.g. `gnome-extensions install --force` of the packed zip), replacing the interim `rm -rf` lines from 2a0ae6f, so dev docs (`CHECKLIST.md`, `DESIGN.md`, `ERRORS.md`, `HACKING.md`), `agents/`, `node_modules/`, `package*.json` are never installed; `make smoke` must still work. Shell loops over files: handle spaces (`screenshots/` has some).
+- **Do:** `publish` = `gnome-extensions pack --force --extra-source=…` for every runtime file/dir (all root `*.js` except `prefs.js`/`extension.js` which pack adds itself, `apps/`, `effects/`, `preferences/`, `ui/` **without `ui/legacy`**, `themes/`, `stylesheet.css`, `LICENSE`, `CHANGELOG.md`), `--schema=schemas/org.gnome.shell.extensions.hyperdock.gschema.xml`. Gitignore `schemas/gschemas.compiled`, `.antigravitycli/`, `*.shell-extension.zip`, `__pycache__/`. Keep the `g44*` targets (deleted in R-21). `probe.js` is a runtime file (imported by `extension.js`), so it must be in the zip. `eslint.config.js` is a root `*.js` but **must not** be packed (list runtime JS explicitly or filter it out). Make `install` install from the same allow-list (e.g. `gnome-extensions install --force` of the packed zip), replacing the interim `rm -rf` lines from 2a0ae6f, so dev docs (`CHECKLIST.md`, `DESIGN.md`, `ERRORS.md`, `HACKING.md`), `agents/`, `node_modules/`, `package*.json` are never installed; `make smoke` must still work. Shell loops over files: handle spaces (`screenshots/` has some).
 - **Accept:** `make publish` produces a zip; `unzip -l` shows `themes/`, no `ui/legacy`, no `agents/`, `tools/`, `tests/`, `build/`, `eslint.config.js`, `node_modules/`, `package*.json`, dev docs; `probe.js` present. After `make install` the installed dir has the same file set.
-- **Verify:** `make publish && unzip -l dash2dock-lite@icedman.github.com.shell-extension.zip`; `make smoke`.
+- **Verify:** `make publish && unzip -l hyperdock@alex-mextner.github.com.shell-extension.zip`; `make smoke`.
 - **Human:** no.
 
 ### Phase 1 — Correctness quick wins
@@ -207,7 +207,7 @@ Phase 2-5 cards are *stubs*: the Orchestrator expands a stub into a full card (s
 - **Fixes:** B-12, B-32, B-33.
 - **Scope:** `ui/tweaks.ui`, `prefs.js`, `preferences/prefKeys.js`.
 - **Do:** own `GtkAdjustment` for `pressure-sense-sensitivity`; populate monitor model **before** binding `preferred-monitor`; `changed::` updates widgets; preset loader: `scale` support, `JSON.parse` in try/catch, disconnect handlers on window close.
-- **Verify:** `make check`; `python3 tools/check-settings.py` (no shared adjustment); prefs open/close leaves `dconf dump /org/gnome/shell/extensions/dash2dock-lite/` unchanged (Worker may *read* dconf).
+- **Verify:** `make check`; `python3 tools/check-settings.py` (no shared adjustment); prefs open/close leaves `dconf dump /org/gnome/shell/extensions/hyperdock/` unchanged (Worker may *read* dconf).
 - **Human:** yes — `make test-prefs`.
 
 #### B-35 — NaN `clip` CRITICAL with blur-my-shell
@@ -276,7 +276,7 @@ Phase 2-5 cards are *stubs*: the Orchestrator expands a stub into a full card (s
   - Isolated smoke uses `GSETTINGS_BACKEND=memory` with defaults only, so trash/downloads/clock/calendar/autohide paths never run.
 - **Do:**
   1. **T-5:** one settle wait (`D2DA_SMOKE_SETTLE`, default 2 s) after the initial enable *and* after every re-enable, before the next disable. The `lo` delta must become 0 without hiding real growth.
-  2. **T-8:** after the toggles and the state checks, stop the shell (SIGTERM, wait up to ~10 s, then SIGKILL) **before** building signatures, so shutdown output is included. Keep the "shell died" check before the stop. Print `shutdown criticals: N` (count of CRITICAL/`sweeping phase of GC` lines after the last `dash2dock-lite` lifecycle line, or after a marker you log). Shutdown criticals must not break the NEW-signature gate today: keep them out of the signature comparison (report the count only) unless `D2DA_SMOKE_STRICT_LEAKS=1`, where N > 0 fails. Document this in the header.
+  2. **T-8:** after the toggles and the state checks, stop the shell (SIGTERM, wait up to ~10 s, then SIGKILL) **before** building signatures, so shutdown output is included. Keep the "shell died" check before the stop. Print `shutdown criticals: N` (count of CRITICAL/`sweeping phase of GC` lines after the last `hyperdock` lifecycle line, or after a marker you log). Shutdown criticals must not break the NEW-signature gate today: keep them out of the signature comparison (report the count only) unless `D2DA_SMOKE_STRICT_LEAKS=1`, where N > 0 fails. Document this in the header.
   3. **T-6 live instances:** `probe.js` exports `live(kind, delta)` (always counts; a plain integer map, no env check; nothing else) and adds the counts to the probe JSON as `liveDock`, `liveDash`, `liveAnimator`. Counter lines: `Dock` constructor/`_init` +1 and a `destroy` signal handler −1 (St actor); the extension-created Dash +1 where it's created in `dock.js` (`createDash`) and −1 on its `destroy` signal; `Animator` constructor +1 (add a trivial constructor if needed) and `Animator.destroy()` −1. Expected now: `liveDock`/`liveAnimator` grow by 1 per toggle (the B-1 leak), which is what R-7d must bring to 0.
   4. **Strict mode:** FAIL if probe line counts ≠ N+1/N (currently only printed).
   5. **Settings hook:** `probe.js` exports `applySmokeSettings(settings)`. It does nothing unless `D2DA_PROBE === '1'` **and** `GSETTINGS_BACKEND === 'memory'` (never touches real dconf). It parses `D2DA_SMOKE_SETTINGS` (`key=value` separated by spaces; value parsed with `GLib.Variant.parse` using the key's type from `settings.settings_schema.get_key(key).get_value_type()`), sets each key, and logs `d2da-probe settings applied: …`. Errors go to `console.error('d2da: probe settings', e)`. Call it from `extension.js` `enable()` right after `this._settings` exists and before docks are built. `smoke-shell.sh` passes `D2DA_SMOKE_SETTINGS` through.
@@ -364,7 +364,7 @@ Phase 2-5 cards are *stubs*: the Orchestrator expands a stub into a full card (s
     - In `DockItemContainer._init`: enable menu creation when `params.app` is provided (`if (params.appinfo_filename || params.app)`).
     - Replace the `Shell.AppSystem.get_default().get_installed()[0].constructor` hack with standard `Gio.DesktopAppInfo`.
 - **Don't:** Don't touch CSS styling or theme handling (that's R-9d). Don't break dock item clicking or context menu activation. Don't write any new files to `/tmp`.
-- **Accept:** No `/tmp/*-dash2dock-lite.desktop` files created during extension lifecycle; right-clicking and clicking trash/mount/downloads icons work properly; `make check`, `make lint` (0 errors, ≤ 150 warnings), `tools/check-settings.py` (exit 0), unit tests pass, `make smoke` and strict smoke pass with 0 new signatures and all deltas 0.
+- **Accept:** No `/tmp/*-hyperdock.desktop` files created during extension lifecycle; right-clicking and clicking trash/mount/downloads icons work properly; `make check`, `make lint` (0 errors, ≤ 150 warnings), `tools/check-settings.py` (exit 0), unit tests pass, `make smoke` and strict smoke pass with 0 new signatures and all deltas 0.
 - **Verify:** `make check`; `make lint`; `python3 -B tools/check-settings.py`; `gjs -m tests/timer_check.js`; `gjs -m tests/window_tracker_check.js`; `D2DA_SMOKE_STRICT_LEAKS=1 tools/smoke-shell.sh 5`; `make smoke`.
 #### R-9c — Use standard XDG user paths and harden config loading (B-21, B-22)
 - **Fixes:** B-21, B-22.

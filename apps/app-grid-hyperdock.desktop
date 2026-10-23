@@ -5,4 +5,4 @@ Type=Application
 Name=Downloads
 Exec=nautilus /usr/share/applications
 Icon=view-app-grid
-StartupWMClass=app-grid-dash2dock-lite
+StartupWMClass=app-grid-hyperdock

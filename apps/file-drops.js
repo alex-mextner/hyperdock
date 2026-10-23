@@ -1,4 +1,4 @@
-// File-drop helper for Dash2Dock: transparent GTK4 windows that the extension
+// File-drop helper for Hyperdock: transparent GTK4 windows that the extension
 // lays over its docks while a file drag is in progress.
 //
 // Why a separate client: on Wayland a drag that starts in a client (Files, a
@@ -169,7 +169,7 @@ async function deliver(drop, drag) {
 
 function createWindow() {
   const win = new Gtk.Window({
-    title: 'dash2dock-lite-file-drops',
+    title: 'hyperdock-file-drops',
     decorated: false,
     default_width: 64,
     default_height: 64,

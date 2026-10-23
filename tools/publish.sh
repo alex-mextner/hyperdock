@@ -11,8 +11,8 @@ Usage: $0 [release-version]
 
 Examples:
   $0          # Uses VERSION env var, or falls back to standard package name
-  $0 50.0     # Packages standard zip AND dash2dock-lite-v50.0.zip
-  $0 50.1     # Packages standard zip AND dash2dock-lite-v50.1.zip
+  $0 50.0     # Packages standard zip AND hyperdock-v50.0.zip
+  $0 50.1     # Packages standard zip AND hyperdock-v50.1.zip
 
 Environment variables:
   VERSION     Optional release version string (e.g. "50.0")
@@ -27,7 +27,7 @@ fi
 REL_VERSION="${1:-${VERSION:-}}"
 
 BUILD_DIR="$REPO_ROOT/build"
-UUID="$(python3 -c "import json; print(json.load(open('$REPO_ROOT/metadata.json'))['uuid'])" 2>/dev/null || echo "dash2dock-lite@icedman.github.com")"
+UUID="$(python3 -c "import json; print(json.load(open('$REPO_ROOT/metadata.json'))['uuid'])" 2>/dev/null || echo "hyperdock@alex-mextner.github.com")"
 ZIP_FILE="$REPO_ROOT/${UUID}.zip"
 
 echo "==> Packaging ${UUID}..."
@@ -66,7 +66,7 @@ cp "$REPO_ROOT/schemas"/*.xml "$BUILD_DIR/schemas/"
 # Clean any non-distribution or obsolete files
 rm -f "$BUILD_DIR/eslint.config.js"
 rm -f "$BUILD_DIR/schemas/"*.compiled
-rm -f "$BUILD_DIR/apps/mount-dash2dock-lite.desktop"
+rm -f "$BUILD_DIR/apps/mount-hyperdock.desktop"
 rm -f "$BUILD_DIR/"*_.js
 
 # Package into zip
@@ -81,7 +81,7 @@ echo "==> Successfully created standard EGO zip: ${ZIP_FILE} ($(du -h "$ZIP_FILE
 if [ -n "$REL_VERSION" ]; then
   # Strip leading 'v' if provided
   REL_VERSION="${REL_VERSION#v}"
-  VERSIONED_ZIP="$REPO_ROOT/dash2dock-lite-v${REL_VERSION}.zip"
+  VERSIONED_ZIP="$REPO_ROOT/hyperdock-v${REL_VERSION}.zip"
   cp "$ZIP_FILE" "$VERSIONED_ZIP"
   echo "==> Created versioned release zip: ${VERSIONED_ZIP} ($(du -h "$VERSIONED_ZIP" | cut -f1))"
 fi

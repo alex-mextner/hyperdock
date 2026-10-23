@@ -1,5 +1,5 @@
 #!/bin/sh
-# Headless smoke test for dash2dock-lite (used by the AUDITOR agent).
+# Headless smoke test for hyperdock (used by the AUDITOR agent).
 #
 # Boots a nested, headless gnome-shell on a private D-Bus session with a
 # virtual monitor, checks that the extension reaches ACTIVE, toggles it
@@ -46,7 +46,7 @@
 #             2 shell failed to start.
 # Run `make install` first - this tests the *installed* copy.
 
-UUID=dash2dock-lite@icedman.github.com
+UUID=hyperdock@alex-mextner.github.com
 TOGGLES=${1:-5}
 LOG=${D2DA_SMOKE_LOG:-/tmp/d2da-smoke.log}
 REPO=$(cd "$(dirname "$0")/.." && pwd)
@@ -195,8 +195,8 @@ if [ "$D2DA_SMOKE_STRICT_LEAKS" = "1" ] && [ "$SHUTDOWN_CRIT" -gt 0 ]; then
 	RESULT=1
 fi
 
-ENABLED=$(grep -c 'dash2dock-lite enabled' "$LOG")
-DISABLED=$(grep -c 'dash2dock-lite disabled' "$LOG")
+ENABLED=$(grep -c 'hyperdock enabled' "$LOG")
+DISABLED=$(grep -c 'hyperdock disabled' "$LOG")
 echo "enable/disable messages: $ENABLED/$DISABLED (expect $((TOGGLES + 1))/$TOGGLES)"
 
 # Prints the probe lines of phase $1 as a table plus the first->last delta of
