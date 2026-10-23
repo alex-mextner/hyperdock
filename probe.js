@@ -114,3 +114,21 @@ export function probe(ext, phase, timers) {
     console.error('d2da: probe', e);
   }
 }
+
+// Smoke-only scenarios (D2DA_SMOKE_SCENARIO=layout|width, see
+// smokeScenario.js): loaded on demand so the Shell modules they need are not
+// imported on a normal enable.
+export function runSmokeScenario(ext) {
+  if (
+    GLib.getenv('D2DA_PROBE') !== '1' ||
+    GLib.getenv('GSETTINGS_BACKEND') !== 'memory' ||
+    !['layout', 'width'].includes(GLib.getenv('D2DA_SMOKE_SCENARIO')) ||
+    ext._scenarioStarted
+  ) {
+    return;
+  }
+  ext._scenarioStarted = true;
+  import('./smokeScenario.js')
+    .then((m) => m.startSmokeScenario(ext))
+    .catch((e) => console.error('d2da: smoke scenario', e));
+}

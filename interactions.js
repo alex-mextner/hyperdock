@@ -13,6 +13,7 @@
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as DND from 'resource:///org/gnome/shell/ui/dnd.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
+import * as Compat from './compat.js';
 import * as Fav from 'resource:///org/gnome/shell/ui/appFavorites.js';
 import { gettext as _ } from 'resource:///org/gnome/shell/extensions/extension.js';
 import { DragOffGesture, HOLD_MS, isOutside, removalKind } from './dragOff.js';
@@ -82,6 +83,8 @@ export class DockInteractions {
       this._onXdndEnd.bind(this),
       this
     );
+
+    this._ensureMenu();
   }
 
   destroy() {
@@ -255,6 +258,15 @@ export class DockInteractions {
     if (!this.extension.background_menu || evt.get_button() !== 3) {
       return false;
     }
+    let [x, y] = evt.get_coords();
+    // The separator slot (the line and its padding up to both neighbouring
+    // icons, across the whole dock) is decided from the layout the animator
+    // last drew, not from the actor the pick landed on: the icons' hit areas
+    // reach into the slot.
+    if (this._inSeparatorSlot(x, y)) {
+      this._openMenu(x, y);
+      return true;
+    }
     let actor = global.stage.get_event_actor(evt);
     for (let a = actor; a && a !== this.dock.dash; a = a.get_parent()) {
       // icons (apps, Show Apps, trash, stacks) keep their own menus
@@ -265,12 +277,46 @@ export class DockInteractions {
         return false;
       }
     }
-    let [x, y] = evt.get_coords();
     this._openMenu(x, y);
     return true;
   }
 
-  _openMenu(x, y) {
+  // Right-click on Show Apps: a menu with Show Applications on top, plus the
+  // dock menu when that is switched on. The grid opens on the primary button
+  // only and nothing is launched.
+  openShowAppsMenu(x, y) {
+    this._openMenu(x, y, true);
+  }
+
+  _inSeparatorSlot(x, y) {
+    let dock = this.dock;
+    let vertical = dock.isVertical();
+    let slot = dock.animator?.separatorSlotAt(vertical ? y : x);
+    if (slot === undefined || slot < 0) {
+      return false;
+    }
+    // across the dock: its whole thickness, the platter included
+    let across = vertical ? x : y;
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (let actor of [dock.dash, dock._background]) {
+      if (!actor) continue;
+      let [ax, ay] = actor.get_transformed_position();
+      let [aw, ah] = actor.get_transformed_size();
+      let start = vertical ? ax : ay;
+      let size = vertical ? aw : ah;
+      if (Number.isFinite(start) && Number.isFinite(size)) {
+        lo = Math.min(lo, start);
+        hi = Math.max(hi, start + size);
+      }
+    }
+    return across >= lo && across <= hi;
+  }
+
+  // The menu and its anchor exist before the first click: opening a menu on
+  // an anchor that has never been allocated logs NaN allocations (Clutter
+  // CRITICAL) the first time only.
+  _ensureMenu() {
     let side = St.Side.BOTTOM;
     switch (this.extension.dock_location) {
       case LOCATION.LEFT:
@@ -289,6 +335,10 @@ export class DockInteractions {
       this._menu = null;
     }
     if (!this._menu) this._buildMenu(side);
+  }
+
+  _openMenu(x, y, showApps = false) {
+    this._ensureMenu();
     this._menuAnchor.set_position(x, y);
 
     let ext = this.extension;
@@ -305,6 +355,13 @@ export class DockInteractions {
           : PopupMenu.Ornament.NONE
       );
     }
+    // right-click on Show Apps opens a menu even with the dock menu off
+    // (then it is just Show Applications)
+    for (let item of this._dockItems) {
+      item.visible = ext.background_menu;
+    }
+    this._showAppsItem.visible = showApps;
+    this._showAppsSeparator.visible = showApps && ext.background_menu;
     this._menu.open(true);
   }
 
@@ -323,6 +380,11 @@ export class DockInteractions {
     let settings = this.extension._settings;
     let toggle = (key) => settings.set_boolean(key, !settings.get_boolean(key));
 
+    this._showAppsItem = menu.addAction(_('Show Applications'), () =>
+      Compat.showOverviewApps(Main.overview)
+    );
+    this._showAppsSeparator = new PopupMenu.PopupSeparatorMenuItem();
+    menu.addMenuItem(this._showAppsSeparator);
     this._hideItem = menu.addAction('', () => toggle('autohide-dash'));
     this._magnifyItem = menu.addAction('', () => toggle('animate-icons'));
 
@@ -337,8 +399,19 @@ export class DockInteractions {
     ]);
     menu.addMenuItem(position);
 
-    menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-    menu.addAction(_('Dock Settings…'), () => this.extension.openPreferences());
+    let rule = new PopupMenu.PopupSeparatorMenuItem();
+    menu.addMenuItem(rule);
+    let prefs = menu.addAction(_('Dock Settings…'), () =>
+      this.extension.openPreferences()
+    );
+    // what "Dock menu" switches off; Show Applications is not part of it
+    this._dockItems = [
+      this._hideItem,
+      this._magnifyItem,
+      position,
+      rule,
+      prefs,
+    ];
 
     Main.uiGroup.add_child(menu.actor);
     menu.actor.hide();
