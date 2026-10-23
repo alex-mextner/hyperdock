@@ -1,8 +1,8 @@
-// node tests/reveal_dwell_check.js - edge-dwell state machine checks (pure
+// gjs -m tests/reveal_dwell_check.js - edge-dwell state machine checks (pure
 // logic, fake clock, no GNOME Shell). Exits 1 on failure.
-import assert from 'node:assert/strict';
 
 import { RevealDwell } from '../revealDwell.js';
+import { assert, createSuite } from './mini_test.js';
 
 // manual clock: schedule() arms, advance(ms) fires what is due; `pressure`
 // is the live pressure-sense switch (h.state.pressure)
@@ -42,8 +42,7 @@ function harness(pressure = false) {
   };
 }
 
-const cases = [];
-const test = (name, fn) => cases.push([name, fn]);
+const { test, run } = createSuite();
 
 test('on the edge for the full delay reveals', () => {
   const h = harness();
@@ -222,15 +221,4 @@ test('revealing from inside onReveal may cancel without a double reveal', () => 
   assert.equal(dwell.onEdge, false);
 });
 
-let failures = 0;
-for (const [name, fn] of cases) {
-  try {
-    fn();
-    console.log(`ok   ${name}`);
-  } catch (err) {
-    failures++;
-    console.log(`FAIL ${name}\n     ${err.message}`);
-  }
-}
-console.log(`${cases.length - failures}/${cases.length} passed`);
-process.exit(failures ? 1 : 0);
+run();
