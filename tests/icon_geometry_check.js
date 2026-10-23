@@ -1,4 +1,4 @@
-// node --experimental-default-type=module tests/icon_geometry_check.js
+// gjs -m tests/icon_geometry_check.js
 // Pure-math checks for iconGeometry.js (bbox, normalization, indicator band).
 import {
   CONTENT_TARGET,
@@ -9,10 +9,11 @@ import {
   rectsIntersect,
   snapToPixel,
 } from '../iconGeometry.js';
+import System from 'system';
 
 let failures = 0;
 function check(cond, msg) {
-  console.log(`${cond ? 'ok  ' : 'FAIL'} ${msg}`);
+  print(`${cond ? 'ok  ' : 'FAIL'} ${msg}`);
   if (!cond) failures++;
 }
 
@@ -61,7 +62,7 @@ function disc(size, fraction, cx = size / 2, cy = size / 2, rowPad = 0) {
     return { name, before: (b.x1 - b.x0) / s, after: n.fill, n };
   });
   for (let r of rows) {
-    console.log(`     ${r.name}: ${(r.before * 100).toFixed(1)}% -> ${(r.after * 100).toFixed(1)}%  k=${r.n.k.toFixed(3)}`);
+    print(`     ${r.name}: ${(r.before * 100).toFixed(1)}% -> ${(r.after * 100).toFixed(1)}%  k=${r.n.k.toFixed(3)}`);
   }
   let max = Math.max(...rows.map(r => r.after));
   let min = Math.min(...rows.map(r => r.after));
@@ -135,7 +136,7 @@ function disc(size, fraction, cx = size / 2, cy = size / 2, rowPad = 0) {
 }
 
 if (failures) {
-  console.log(`${failures} check(s) failed`);
-  process.exit(1);
+  print(`${failures} check(s) failed`);
+  System.exit(1);
 }
-console.log('icon_geometry_check: OK');
+print('all passed');
