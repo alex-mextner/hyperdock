@@ -109,6 +109,7 @@ export function probe(ext, phase, timers) {
           stage,
           dashes,
           docks: ext.docks?.length ?? 0,
+          favorites: ext._appFavorites?.getFavorites?.().map((a) => a.get_id()) ?? [],
           hi: subscribers(timers.hi),
           lo: subscribers(timers.lo),
           loop: subscribers(timers.loop),

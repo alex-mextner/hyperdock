@@ -1,9 +1,7 @@
-// node tests/widget_apps_check.js - Calendar/Clock widget helpers: next-midnight
+// gjs -m tests/widget_apps_check.js - Calendar/Clock widget helpers: next-midnight
 // computation, midnight ticker, app detection and the auto-pin decision (pure
 // logic, no GNOME Shell). Exits 1 on failure.
-process.env.TZ = 'America/New_York'; // DST-aware zone, set before any Date use
-
-import assert from 'node:assert/strict';
+import GLib from 'gi://GLib';
 
 import {
   nextMidnightDelayMs,
@@ -12,17 +10,12 @@ import {
   decidePin,
   describeWidgetApp,
 } from '../widgetApps.js';
+import { assert, createSuite } from './mini_test.js';
 
-let failed = 0;
-function test(name, fn) {
-  try {
-    fn();
-    console.log(`ok   ${name}`);
-  } catch (e) {
-    failed++;
-    console.error(`FAIL ${name}\n     ${e.message}`);
-  }
-}
+// DST-aware zone, set before any Date is built
+GLib.setenv('TZ', 'America/New_York', true);
+
+const { test, run } = createSuite();
 
 const SEC = 1000;
 const HOUR = 3600 * SEC;
@@ -177,8 +170,7 @@ test('a throwing redraw does not stop the midnight chain', () => {
   const timers = new Map();
   let id = 0;
   let calls = 0;
-  const origError = console.error;
-  console.error = () => {};
+  let errors = 0;
   const t = new MidnightTicker({
     schedule: (fn, ms) => (timers.set(++id, { fn, due: now.getTime() + ms }), id),
     cancel: (h) => timers.delete(h),
@@ -187,8 +179,9 @@ test('a throwing redraw does not stop the midnight chain', () => {
       calls++;
       throw new Error('boom');
     },
+    onError: () => errors++,
   });
-  try {
+  {
     t.start();
     now = new Date(now.getTime() + HOUR);
     const [[h, tm]] = [...timers];
@@ -196,8 +189,7 @@ test('a throwing redraw does not stop the midnight chain', () => {
     tm.fn();
     assert.equal(calls, 1);
     assert.equal(timers.size, 1, 'next midnight armed despite the throw');
-  } finally {
-    console.error = origError;
+    assert.equal(errors, 1);
   }
 });
 
@@ -238,8 +230,4 @@ test('missing app: row insensitive with an install hint', () => {
   assert.match(k.subtitle, /GNOME Clocks/);
 });
 
-if (failed) {
-  console.error(`${failed} failed`);
-  process.exit(1);
-}
-console.log('widget apps: all passed');
+run();

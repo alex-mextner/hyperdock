@@ -193,19 +193,10 @@ export const Services = class {
   // Calendar app installed) works too. Detected on enable and whenever the
   // installed apps change; the per-frame path only compares ids.
   refreshWidgetApps() {
-    const before = this._widgetApps;
     this._widgetApps = {
       calendar: detectWidgetApp('calendar'),
       clock: detectWidgetApp('clock'),
     };
-    // a widget drawn over the previous app must not stay on its icon
-    if (before) {
-      this.extension.docks?.forEach((d) => {
-        if (before.calendar?.id !== this._widgetApps.calendar?.id)
-          d._calendar?.destroy();
-        if (before.clock?.id !== this._widgetApps.clock?.id) d._clock?.destroy();
-      });
-    }
   }
 
   widgetApp(kind) {
@@ -1144,6 +1135,8 @@ export const Services = class {
         item._icon.visible = true;
         clock?.hide();
       }
+    } else if (item._clock) {
+      this._dropWidget(item, '_clock');
     }
 
     // calendar
@@ -1181,6 +1174,15 @@ export const Services = class {
         item._icon.visible = true;
         calendar?.hide();
       }
+    } else if (item._calendar) {
+      this._dropWidget(item, '_calendar');
     }
+  }
+
+  // the item no longer shows the app its live widget was drawn over (another
+  // app was detected, e.g. Calendar got installed over a handler fallback)
+  _dropWidget(item, key) {
+    item[key].destroy();
+    item._icon.visible = true;
   }
 };

@@ -27,11 +27,18 @@ export function nextMidnightDelayMs(now) {
 // rearm() is for resume-from-suspend and timezone/clock changes: the pending
 // timer is stale then, so redraw at once and aim at the next midnight again.
 export let MidnightTicker = class {
-  constructor({ schedule, cancel, now, onMidnight }) {
+  constructor({
+    schedule,
+    cancel,
+    now,
+    onMidnight,
+    onError = (e) => console.error('d2da: midnight redraw', e),
+  }) {
     this._schedule = schedule;
     this._cancel = cancel;
     this._now = now;
     this._onMidnight = onMidnight;
+    this._onError = onError;
     this._handle = null;
   }
 
@@ -65,7 +72,7 @@ export let MidnightTicker = class {
     try {
       this._onMidnight();
     } catch (e) {
-      console.error('d2da: midnight redraw', e);
+      this._onError(e);
     }
   }
 };
