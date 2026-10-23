@@ -11,6 +11,8 @@ const GETTEXT_DOMAIN = 'hyperdock';
 
 import { schemaId, SettingsKeys } from './preferences/keys.js';
 import { MonitorsConfig } from './monitors.js';
+import { describeWidgetApp } from './widgetApps.js';
+import { detectWidgetApp } from './widgetAppsGio.js';
 
 import {
   ExtensionPreferences,
@@ -269,6 +271,21 @@ export default class Preferences extends ExtensionPreferences {
 
     this.addButtonEvents(window, builder, settings);
     this.addMenu(window, builder);
+
+    // Calendar/Clock rows name the app they draw over, or turn insensitive
+    // with an install hint when there is none
+    ['calendar', 'clock'].forEach((kind) => {
+      let row = builder.get_object(`${kind}-icon-row`);
+      if (!row) return;
+      let state = describeWidgetApp(
+        kind,
+        detectWidgetApp(kind),
+        _,
+        settings.get_boolean(`${kind}-icon`)
+      );
+      row.set_sensitive(state.sensitive);
+      row.set_subtitle(state.subtitle);
+    });
 
     if (builder.get_object('peek-hidden-icons-row')) {
       builder.get_object('peek-hidden-icons-row').visible = false;
