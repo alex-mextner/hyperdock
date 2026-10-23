@@ -480,6 +480,9 @@ export const DockBackground = GObject.registerClass(
         name: 'DockBackground',
         ...(params || {}),
       });
+      // what the Dash adds around the icons' slots, along the dock (update())
+      this._slotPad = undefined;
+      this._slotPadVertical = undefined;
     }
 
     update(params) {
@@ -519,7 +522,36 @@ export const DockBackground = GObject.registerClass(
         let width = dock.dash.width;
         let height = dock.dash.height;
 
-        if (dock.isVertical()) {
+        // Along the dock the platter spans the icons' own slots (what the
+        // animator measured and the translations below are relative to), not
+        // the live size of the Dash: after an item is added the Dash can
+        // already have its final size while the slots are still those of an
+        // intermediate allocation, which showed as a one-frame dip. What the
+        // slots do not cover (the Dash's own padding) is learned while they
+        // hold still.
+        const slots = dock.animator?.layout;
+        if (slots?.nodeCount) {
+          const span = slots.spanEnd - slots.spanStart;
+          // the pad belongs to one axis: forget it when the dock turns
+          if (this._slotPadVertical !== vertical) {
+            this._slotPad = undefined;
+            this._slotPadVertical = vertical;
+          }
+          if (slots.settled) {
+            this._slotPad = ((vertical ? height : width) - span) / 2;
+          }
+          if (Number.isFinite(this._slotPad)) {
+            if (vertical) {
+              this.y = slots.spanStart - this._slotPad;
+              height = span + 2 * this._slotPad;
+            } else {
+              this.x = slots.spanStart - this._slotPad;
+              width = span + 2 * this._slotPad;
+            }
+          }
+        }
+
+        if (vertical) {
           this.y += ty;
           height += ty2 - ty;
         } else {

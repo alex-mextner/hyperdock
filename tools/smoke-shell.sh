@@ -29,11 +29,18 @@
 #                        (stage delta excluded due to run-to-run noise outside the extension),
 #                        if probe line counts != TOGGLES+1/TOGGLES, or if
 #                        shutdown criticals > 0
-#   D2DA_PROBE_SCENARIO  'recents': scripted checks run inside the
+#   D2DA_PROBE_SCENARIO  'recents', 'layout', 'width' (comma separated):
+#                        scripted checks run inside the
 #                        shell by probeScenarios.js (isolated mode,
 #                        D2DA_PROBE=1); every "ok":false fails the run. The
 #                        run waits for them (D2DA_SMOKE_SCENARIO_TIMEOUT, 300 s):
 #                        use 0 toggles, they run after the first enable.
+#                        layout/width (layoutScenarios.js) drive the real dock:
+#                        pointer sweep over the separators, right-clicks with a
+#                        virtual pointer, adding/removing a favourite; pair them
+#                        with D2DA_SMOKE_SETTINGS='trash-icon=true
+#                        downloads-icon=true separator-thickness=3
+#                        background-menu=true' (dock-location=0..3 per position)
 #   D2DA_PROBE_SHOTS     directory for PNG screenshots the scenarios take
 #
 # Shutdown criticals: CRITICAL lines the shell logs after the stop marker

@@ -35,7 +35,8 @@ or on the natural size of those actors.
    natural (`-1`). The platter (`DockBackground`) is centred on the dash's
    cross axis, so separators sit centred on it through `CENTER` alignment and
    equal cross-axis margins (`_inspectIcon()`). The animator moves them only
-   along the dock and sets their length to `0.75 × iconSize`.
+   along the dock and sets their length to `0.75 × iconSize`; along the dock
+   they are placed as described in "Separator slots" below.
 6. `_snapToContainerEdge(this, this.dash)` uses that pinned size, so the snap
    gives the same result in every frame.
 
@@ -62,6 +63,82 @@ sources of size changes:
   in (0 icons at first meant no shrink, so large icons that shrank later). It
   also included items still animating out (`animatingOut`, about 200ms before
   `destroy`), and hidden non-favorites when `_favorite_ids` wasn't loaded yet.
+
+## Separator slots (`dockLayout.js`)
+
+The animator does not move icons by hand. Every frame `DockLayout.measure()`
+takes `dock._dashItems` and keeps what it can measure *now*: an icon needs its
+`_icon` and a finite position and size; a separator needs to be visible,
+mapped (a hidden parent, e.g. an empty extra-icons box, means no slot),
+measurable, and an icon on both sides. Nothing carries over from earlier
+frames, so an icon the Shell has not placed yet (a new item, a dash rebuilt
+off the stage) simply does not take part, and the renderer pool entries past
+the measured count are hidden. A separator without icons on both sides, or
+right after another separator, is made transparent (not hidden, so it is
+measured again next frame).
+
+`DockLayout.compute()` then packs the kept nodes (icons and separators) along
+the dock axis with the magnification bell. A separator is a node of its own
+thickness (`separator-thickness + 0.5`), never magnified, and every pair of
+neighbouring nodes is `padding + share` apart (`share` is the dock-length
+correction, clamped so the gap is never negative). So **a separator owns a
+slot of its own and its rect has gap >= 0 to both neighbouring icons on every
+frame, for any magnification** - by construction, not through an offset.
+
+Icons ease towards their layout, so the gap that is really drawn can be
+narrower for a few frames. `Animator._placeSeparators()` therefore centres the
+line in the gap between the icon rects as drawn this frame
+(`DockLayout.fitSeparators()`): the line is never wider than that gap.
+
+The same gap is the **right-click hit area**: `DockLayout.slotStart/slotEnd`
+(stage coordinates, along the dock) hold the span between the previous icon
+and the next one, i.e. the line plus the padding up to both neighbours.
+`DockInteractions.handleButtonPress()` runs in the capture phase of the dash
+(the icons' hit areas can reach into the slot) and opens the dock menu when
+the pointer is in a slot and within the dock's thickness (dash and platter).
+Right-click on Show Apps opens the same menu with a "Show Applications" item
+(only that item when the dock menu is switched off) and never the grid or a
+launch; only the primary button opens the grid.
+
+Checks: `tests/dock_layout_check.js` (pure; node and gjs) sweeps the scenario
+matrix. `D2DA_PROBE=1 D2DA_PROBE_SCENARIO=layout tools/smoke-shell.sh 0` (with
+`D2DA_SMOKE_SETTINGS='trash-icon=true downloads-icon=true separator-thickness=3 background-menu=true'`,
+see `layoutScenarios.js`) repeats the sweep on the real actors in the nested
+shell, clicks with a virtual pointer (slot, icon beside it, Show Apps) and
+adds/removes a favourite; `D2DA_PROBE_SCENARIO=width` runs only the last part.
+
+## Icons coming and going (the dock width animates)
+
+The Dash is centred and sizes itself at once: a new container shifts every
+other slot by half its width (the ones after it by all of it). The icons are
+drawn by the animator at `rest slot + translation`, so without care the drawn
+dock jumps with the slot. It used to be hidden by a fast-forward hack
+(`_fast_forward`: `_onAppsChanged` re-ran 20 frames inside one tick), which is
+exactly why "new icons add without dock width animation" (#1): the animation
+was skipped by design. It is gone; two things replace it:
+
+- **Continuity.** `DockLayout.measure()` reports `iconDrift`, how far each
+  icon's rest slot moved since it was last measured; the animator adds it to
+  the icon's drawn offset, so what is on screen stays where it was and the
+  normal easing glides it to the new layout. The platter (`DockBackground`)
+  spans the icons' own slots (`DockLayout.spanStart/spanEnd`) plus their
+  `first`/`last` translation, not the live size of the Dash: right after an
+  item is added the Dash already reports its final size while the slots are
+  still those of an intermediate allocation (the new container is allocated at
+  its natural size before `relayout()` resizes it), and mixing the two showed
+  as a one-frame dip. What the slots do not cover (the Dash's own padding) is
+  learned while they hold still (`DockLayout.settled`).
+- **Presence.** An icon the dock has not seen before starts with `_presence`
+  0 and opens over about 15 frames. Presence scales its node and the gaps next
+  to it (half a gap on each side, so a closed slot costs nothing): neighbours
+  glide apart as it grows, and its renderer starts at size 0 instead of at a
+  neighbour's pooled size. What is on the stage when the animator first runs
+  (and after a re-enable) is open at once and put in place without easing.
+
+Frames keep coming until every icon has reached its goal (`settling`), then
+the loop idles as before. Removal needs nothing extra: the Shell collapses the
+leaving item (see below), the rest slots move, and the drift makes the
+remaining icons glide.
 
 ## Items animating out
 

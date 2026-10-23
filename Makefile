@@ -88,6 +88,7 @@ check:
 	find . -path ./node_modules -prune -o -path ./build -prune -o -path ./tests -prune \
 		-o -path ./tools -prune -o -path ./ci -prune -o -name '*.js' -print \
 		| xargs -n1 node --check
+	node tests/dock_layout_check.js
 	@echo "check: OK"
 
 # schema <-> preferences/keys.js <-> ui/*.ui <-> runtime refs. Exits 1 on

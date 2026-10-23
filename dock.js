@@ -380,8 +380,13 @@ export let Dock = GObject.registerClass(
       }
     }
 
-    // connectObject handlers receive (actor, event)
-    _onButtonPressEvent(actor, evt) {
+    // connectObject handlers receive (actor, event). Capture phase: the
+    // separator slot is decided from the layout before an icon under the
+    // pointer, whose hit area can reach into the slot, sees the press.
+    _onCapturedEvent(actor, evt) {
+      if (evt.type() !== Clutter.EventType.BUTTON_PRESS) {
+        return Clutter.EVENT_PROPAGATE;
+      }
       if (this.interactions?.handleButtonPress(evt)) {
         return Clutter.EVENT_STOP;
       }
@@ -447,7 +452,6 @@ export let Dock = GObject.registerClass(
       this._favorite_ids = Compat.getFavoriteAppIds(Fav.getAppFavorites());
       this._icons = null;
       this._needsLayout = true;
-      this._fast_forward = 20;
       // this._debouncedBeginAnimation();
       this._beginAnimation();
       this.autohider._debounceCheckHide();
@@ -714,8 +718,8 @@ export let Dock = GObject.registerClass(
       this.dash.connectObject(
         'scroll-event',
         this._onScrollEvent.bind(this),
-        'button-press-event',
-        this._onButtonPressEvent.bind(this),
+        'captured-event',
+        this._onCapturedEvent.bind(this),
         'motion-event',
         this._onMotionEvent.bind(this),
         'enter-event',
@@ -1111,7 +1115,18 @@ export let Dock = GObject.registerClass(
             icon._connected = true;
             icon.connectObject(
               'button-press-event',
-              () => {
+              (_actor, evt) => {
+                // macOS: only the primary button opens the grid; the
+                // secondary one opens a menu and never launches anything
+                let button = evt.get_button();
+                if (button === Clutter.BUTTON_SECONDARY) {
+                  let [x, y] = evt.get_coords();
+                  this.interactions?.openShowAppsMenu(x, y);
+                  return Clutter.EVENT_STOP;
+                }
+                if (button !== Clutter.BUTTON_PRIMARY) {
+                  return Clutter.EVENT_PROPAGATE;
+                }
                 if (this.animated && this._hoveredIcon && this._hoveredIcon !== showAppsIcon) {
                   let target = this._hoveredIcon;
                   if (target._onClick) {
@@ -1283,17 +1298,6 @@ export let Dock = GObject.registerClass(
             this._needsLayout = true;
           });
         }
-      });
-
-      // link list the dash items
-      //! optimize this. there has to be a better way to get the separators _prev and _next
-      let prev = null;
-      this._dashItems.forEach((c) => {
-        if (prev) {
-          prev._next = c;
-        }
-        c._prev = prev;
-        prev = c;
       });
 
       return this._icons;
@@ -1725,9 +1729,6 @@ export let Dock = GObject.registerClass(
       }
 
       this._needsLayout = false;
-      if (!this._fast_forward || this._fast_forward <= 0) {
-        this._fast_forward = 20;
-      }
       return true;
     }
 
@@ -1872,13 +1873,6 @@ export let Dock = GObject.registerClass(
       //! add layout here instead of at the
       this.animator.animate(dt);
 
-      // hack to mitigate jerkiness when a new icon is inserted
-      if (!this._pauseBounce || this._pauseBounce <= 0) {
-        while (this._fast_forward && this._fast_forward-- > 0) {
-          this.animate(dt);
-          this.dash.opacity = 0;
-        }
-      }
       this.simulated_pointer = null;
 
       if (this._pauseBounce && this._pauseBounce > 0) {
