@@ -1,6 +1,6 @@
 all: build install lint
 
-.PHONY: build install publish check-devkit check-install-dir test-shell test-shell2 check smoke lint check-settings build-g44 test ci ci-fast hooks
+.PHONY: build install publish check-devkit check-install-dir test-shell test-shell2 check smoke lint check-settings test ci ci-fast hooks
 
 RUNTIME_DIR ?= $(or $(XDG_RUNTIME_DIR),/run/user/$(shell id -u))
 # gnome-shell writes this at startup as a crash marker; if it is left behind
@@ -76,49 +76,6 @@ test-shell2: check-devkit install
 		MUTTER_DEBUG_DUMMY_MODE_SPECS=1200x800 \
 	 	MUTTER_DEBUG_DUMMY_MONITOR_SCALES=2 \
 		dbus-run-session -- gnome-shell --devkit --wayland
-	rm -f $(DISABLE_EXT_FLAG)
-
-# GNOME 42-44 copy in ./build only; `g44` also installs it
-build-g44: build
-	rm -rf ./build
-	mkdir -p ./build
-	mkdir -p ./build/apps
-	mkdir -p ./build/effects
-	mkdir -p ./build/preferences
-	python3 ./tools/transpile.py
-	cp -R ./schemas ./build
-	cp -R ./themes ./build
-	cp -R ./ui ./build
-	cp -R apps/*.sh ./build/apps
-	cp -R apps/*.desktop ./build/apps
-	rm -rf build/apps/mount-hyperdock.desktop
-	cp ./effects/*.glsl ./build/effects
-	cp ./LICENSE* ./build
-	-cp ./CHANGELOG* ./build 2>/dev/null || true
-	cp ./README* ./build
-	cp ./stylesheet.css ./build
-	cp ./apps/recents.js ./build/apps
-	cp ./apps/trash-render.js ./build/apps
-	cp ./apps/file-drops.js ./build/apps
-
-g44: build-g44 check-install-dir
-	rm -rf "$(EXT_DIR)/"
-	mkdir -p "$(EXT_DIR)/"
-	cp -r ./build/* "$(EXT_DIR)/"
-
-publish-g44: build-g44
-	echo "publishing..."
-	cd build ; \
-	zip -qr ../hyperdock@alex-mextner.github.com.zip .
-
-test-prefs-g44: g44
-	gnome-extensions prefs hyperdock@alex-mextner.github.com
-
-test-shell-g44: g44
-	env GNOME_SHELL_SLOWDOWN_FACTOR=2 \
-		MUTTER_DEBUG_DUMMY_MODE_SPECS=1200x800 \
-	 	MUTTER_DEBUG_DUMMY_MONITOR_SCALES=1 \
-		dbus-run-session -- gnome-shell --nested --wayland
 	rm -f $(DISABLE_EXT_FLAG)
 
 lint:

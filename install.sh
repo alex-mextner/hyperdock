@@ -43,7 +43,7 @@ else
   if [ -n "$DESKTOP" ]; then
     echo "    Current desktop session reported: ${DESKTOP}"
   fi
-  echo "    Hyperdock requires GNOME Shell (42-50+). Installation can proceed,"
+  echo "    Hyperdock requires GNOME Shell 50. Installation can proceed,"
   echo "    but the extension will only function inside a GNOME desktop session."
 fi
 echo ""
@@ -101,14 +101,8 @@ for r in releases:
         is_rec = False
         tag_l = tag.lower()
         if tag_l.startswith('v50') or tag_l == 'g50':
-            compat_info = "[GNOME 45 - 50]"
-            if gnome_major is not None and 45 <= gnome_major <= 50:
-                is_rec = True
-        elif tag_l == 'g45':
-            compat_info = "[GNOME 45 - 46]"
-        elif tag_l == 'g44':
-            compat_info = "[GNOME 42 - 44]"
-            if gnome_major is not None and 42 <= gnome_major <= 44:
+            compat_info = "[GNOME 50]"
+            if gnome_major == 50:
                 is_rec = True
 
         rec_str = ' (Recommended for your GNOME version)' if is_rec else ''
@@ -199,11 +193,6 @@ CHOSEN_FILE="${FILENAMES[$CHOICE]}"
 IS_FORCE_INSTALL=0
 if [ -n "$GNOME_MAJOR" ]; then
   CHOSEN_MAX=50
-  if [[ "${CHOSEN_TAG,,}" =~ ^g44 ]]; then
-    CHOSEN_MAX=44
-  elif [[ "${CHOSEN_TAG,,}" =~ ^g45 ]]; then
-    CHOSEN_MAX=46
-  fi
 
   if [ "$GNOME_MAJOR" -gt "$CHOSEN_MAX" ]; then
     IS_FORCE_INSTALL=1
@@ -216,6 +205,10 @@ if [ -n "$GNOME_MAJOR" ]; then
       exit 0
     fi
     echo "Proceeding with force install..."
+  elif [ "$GNOME_MAJOR" -lt 50 ]; then
+    echo "Error: Hyperdock requires GNOME Shell 50; your system runs GNOME ${GNOME_MAJOR}." >&2
+    echo "       For older GNOME versions use upstream dash2dock-lite." >&2
+    exit 1
   fi
 fi
 

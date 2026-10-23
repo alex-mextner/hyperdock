@@ -19,8 +19,7 @@ If you prefer strictly human-written code, feel free to skip this extension. If 
 
 ### Notice
 
-* Supports GNOME 42, 43, 44, 45, 46, 47, 48, 49, 50
-* Older versions are largely unsupported
+* Supports GNOME Shell 50 only (Ubuntu 26.04). For older GNOME versions use upstream [dash2dock-lite](https://github.com/icedman/dash2dock-lite).
 
 ### Features
 
@@ -156,22 +155,16 @@ For now, you will have to use Looking Glass (GNOME's built-in debugger) to inspe
 
 The blurred background feature requires **ImageMagick** to be installed on the system. This generates the blurred image based on the desktop wallpaper.
 
-## GNOME 42, 43, 44 Support
+## Installing over a symlink
 
-To build and install Hyperdock for older versions (prior to GNOME 45), run:
-
-```bash
-make g44
-```
-
-`make build-g44` builds the same copy into `./build` without installing it. The install targets (`make`, `make install`, `make g44`, `make install-zip`) refuse to run when `~/.local/share/gnome-shell/extensions/hyperdock@icedman.github.com` is a symlink, since installing would empty the checkout it points to; remove the link first to install a copy.
+`make install` and `make install-zip` refuse to run when `~/.local/share/gnome-shell/extensions/hyperdock@alex-mextner.github.com` is a symlink, since installing would empty the checkout it points to; remove the link first to install a copy.
 
 ## Bug Reporting
 
 When reporting bugs, please include the following details:
 
 * Linux Flavor/Distribution and version
-* GNOME version (e.g. 45.xx)
+* GNOME version (e.g. 50.1)
 * Hyperdock release number
 
 Check for any exceptions in the logs by running the following in the terminal:
@@ -194,10 +187,7 @@ Please be specific about the errors encountered, and attach screenshots if possi
 
 ## Testing Rig
 
-* Fedora 43 (GNOME 49)
-* Arch Linux (GNOME 49)
-* Fedora 37 Live (GNOME 42)
-* Ubuntu 23 (GNOME 45)
+* Ubuntu 26.04 (GNOME 50, Wayland)
 
 ## License
 
