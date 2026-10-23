@@ -26,6 +26,8 @@ import { Animator } from './animator.js';
 import { live } from './probe.js';
 import { get_distance_sqr, get_distance, isInRect, isOverlapRect } from './utils.js';
 import { syncOpenAtLogin, hideOpenAtLogin } from './openAtLogin.js';
+import { syncRemoveFromDockItem } from './removeFromDock.js';
+import { recentSeparatorIndex } from './recentApps.js';
 import {
   filterDashRunningApps,
   onActiveWorkspace,
@@ -233,6 +235,7 @@ export let Dock = GObject.registerClass(
         this.dash = null;
         this._extraIcons = null;
         this._separator = null;
+        this._recentsSeparator = null;
         this._icons = null;
         this._dashItems = [];
         this._separators = [];
@@ -260,6 +263,53 @@ export let Dock = GObject.registerClass(
       this._needsLayout = true;
       this.relayout(true);
       this._beginAnimation();
+    }
+
+    // The Shell Dash puts one separator after the favorites; the recents
+    // section (pinned | running | recents) gets its own after the running
+    // apps. Runs before the items are inspected: placing the separator
+    // makes the box emit child-added/child-removed, which drops the cache.
+    _syncRecentsSeparator(dashBox) {
+      let recents = this.extension.favorites_only
+        ? []
+        : this.extension.recentDockApps();
+      let favorites = Fav.getAppFavorites();
+      let items = [];
+      let kinds = [];
+      dashBox?.get_children().forEach((c) => {
+        let app = c.child?.app;
+        if (!app || c.animatingOut) return;
+        items.push(c);
+        if (recents.includes(app)) {
+          kinds.push('recent');
+        } else {
+          kinds.push(favorites.isFavorite(app.get_id()) ? 'favorite' : 'running');
+        }
+      });
+
+      let at = recentSeparatorIndex(kinds);
+      if (at < 0) {
+        this._recentsSeparator?.destroy();
+        return;
+      }
+      if (!this._recentsSeparator) {
+        let separator = new St.Widget({
+          name: 'd2daRecentsSeparator',
+          style_class: 'dash-separator',
+          y_align: Clutter.ActorAlign.CENTER,
+          height: this.dash.iconSize,
+        });
+        separator.connect('destroy', () => {
+          if (this._recentsSeparator === separator) {
+            this._recentsSeparator = null;
+          }
+        });
+        this._recentsSeparator = separator;
+        dashBox.add_child(separator);
+      }
+      if (items[at].get_previous_sibling() !== this._recentsSeparator) {
+        dashBox.set_child_below_sibling(this._recentsSeparator, items[at]);
+      }
     }
 
     createItem(appOrPath, id) {
@@ -585,8 +635,8 @@ export let Dock = GObject.registerClass(
 
       // Dash._redisplay() reads only get_running() from _appSystem (its
       // signals are connected already): appending the recent apps there
-      // gives them real AppIcons after the running ones, behind the same
-      // separator, and they turn into running icons on launch by themselves
+      // gives them real AppIcons after the running ones (_syncRecentsSeparator
+      // splits them off), and they turn into running icons on launch by themselves
       let appSystem = dash._appSystem;
       if (appSystem) {
         dash._appSystem = {
@@ -998,6 +1048,9 @@ export let Dock = GObject.registerClass(
         this._favorite_ids = Compat.getFavoriteAppIds(Fav.getAppFavorites());
       }
 
+      this._syncRecentsSeparator(dashBox);
+      this._boxIconsLength = dashBox?.get_children().length ?? 0;
+
       this._dashItems = [];
       this._separators = [];
       this._icons = [];
@@ -1010,13 +1063,17 @@ export let Dock = GObject.registerClass(
       });
 
       // hack: sometimes the Dash creates more than one separator
-      // workaround - remove all separators in such situation
+      // workaround - remove all of its separators in such situation
+      // (the recents separator is ours: one at most, placed by us)
       //! pinpoint the cause of the errors
-      if (this._separators.length > 1) {
-        while (this._separators.length > 0) {
-          dashBox?.remove_child(this._separators[0]);
-          this._separators.shift();
-        }
+      let shellSeparators = this._separators.filter(
+        (s) => s !== this._recentsSeparator
+      );
+      if (shellSeparators.length > 1) {
+        shellSeparators.forEach((s) => dashBox?.remove_child(s));
+        this._separators = this._separators.filter(
+          (s) => !shellSeparators.includes(s)
+        );
       }
 
       // hide separator between running apps and favorites - if not needed
@@ -1164,6 +1221,15 @@ export let Dock = GObject.registerClass(
               );
             } catch (e) {
               console.error('d2da: show all windows item', e);
+            }
+            try {
+              syncRemoveFromDockItem(
+                appwell,
+                (app) => this.extension.recentDockApps().includes(app),
+                (app) => this.extension.forgetRecentApp(app.get_id())
+              );
+            } catch (e) {
+              console.error('d2da: remove from dock item', e);
             }
             return ret;
           };

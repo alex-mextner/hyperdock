@@ -384,7 +384,7 @@
     <key type="i" name="recent-apps-count">
         <default>0</default>
         <summary>Recent apps in dock</summary>
-        <description>Show up to this many recently closed, non-pinned apps after the running apps (macOS "Show suggested and recent apps in Dock"). 0: off.</description>
+        <description>Show up to this many recently closed, non-pinned apps in their own section after the running apps, behind a separator (macOS "Show suggested and recent apps in Dock"). Right-click an icon and choose Remove from Dock, or drag it off the dock, to drop it from the list. 0: off.</description>
     </key>
     <key type="as" name="recent-apps">
         <default>[]</default>
@@ -409,7 +409,7 @@
     <key type="b" name="drag-off-remove">
         <default>false</default>
         <summary>Drag icons off the dock to remove them</summary>
-        <description>Dragging a pinned app icon away from the dock shows "Remove"; dropping it there unpins the app with a poof, as on macOS.</description>
+        <description>Dragging a pinned or recent app icon away from the dock shows "Remove"; dropping it there unpins the app (a recent app leaves the recents) with a poof, as on macOS.</description>
     </key>
     <key type="b" name="background-menu">
         <default>false</default>

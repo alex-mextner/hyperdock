@@ -44,6 +44,7 @@ import { WallpaperTone, markColors } from './contrast.js';
 import { HotkeysOverlay } from './hotkeysOverlay.js';
 import { AppSpread, WindowEvents } from './windowsView.js';
 import { FileDrops } from './fileDrops.js';
+import { forgetRecent, isLaunchable, pickRecents, rememberRecent } from './recentApps.js';
 
 import {
   Extension,
@@ -1004,26 +1005,46 @@ export default class HyperdockExt extends Extension {
     if (app?.state !== Shell.AppState.STOPPED) return;
     let id = app.get_id();
     if (!id || id.startsWith('window:')) return;
-    let ids = this._settings.get_strv('recent-apps').filter((i) => i !== id);
-    ids.unshift(id);
-    this._settings.set_strv('recent-apps', ids.slice(0, RECENT_APPS_KEPT));
+    let ids = rememberRecent(
+      this._settings.get_strv('recent-apps'),
+      id,
+      RECENT_APPS_KEPT
+    );
+    this._settings.set_strv('recent-apps', ids);
   }
 
   // Apps the dock shows after the running ones: recently closed, not pinned,
-  // not running (a running app already has its own icon)
+  // not running (a running app already has its own icon), launchable
   recentDockApps() {
     let count = this.recent_apps_count;
     if (!count || !this._settings || !this._appSystem) return [];
     let favorites = Fav.getAppFavorites().getFavoriteMap();
-    let apps = [];
-    for (let id of this._settings.get_strv('recent-apps')) {
-      if (id in favorites) continue;
-      let app = this._appSystem.lookup_app(id);
-      if (!app || app.state !== Shell.AppState.STOPPED) continue;
-      apps.push(app);
-      if (apps.length >= count) break;
-    }
-    return apps;
+    return pickRecents(this._settings.get_strv('recent-apps'), {
+      count,
+      isFavorite: (id) => id in favorites,
+      resolve: (id) => {
+        let app = this._appSystem.lookup_app(id);
+        let info = app?.get_app_info();
+        if (!info || app.state !== Shell.AppState.STOPPED) return null;
+        return isLaunchable({
+          noDisplay: info.get_nodisplay(),
+          categories: info.get_categories(),
+        })
+          ? app
+          : null;
+      },
+    });
+  }
+
+  // "Remove from Dock" / drag-off on a recent app: the id leaves the list,
+  // the dock rebuilds without it
+  forgetRecentApp(id) {
+    if (!this._settings) return;
+    let ids = this._settings.get_strv('recent-apps');
+    let next = forgetRecent(ids, id);
+    if (next.length === ids.length) return;
+    this._settings.set_strv('recent-apps', next);
+    this._queueReactions(REACTIONS['recent-apps-count']);
   }
 
   _removeEvents() {
