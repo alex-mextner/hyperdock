@@ -17,8 +17,6 @@ def dump(f):
         return
     if "tests/" in f:
         return
-    if "imports_" in f:
-        return
     f = f.strip()
     
     section = "# "

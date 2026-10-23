@@ -6,7 +6,7 @@
 > **Roadmap** to pick work.
 >
 > - Line numbers are pinned to commit `f876684` (main). Re-verify with `grep -n` after edits.
-> - `build/` is a **generated copy** (Makefile `publish`/`g44`). Never edit or grep it — exclude it.
+> - `build/` is a **generated copy** (Makefile `publish`). Never edit or grep it — exclude it.
 > - Tags: **[verified]** = confirmed by reading code. **[inference]** = reasoned, not reproduced at runtime. **[verify]** = must check against the target GNOME Shell source.
 
 ---

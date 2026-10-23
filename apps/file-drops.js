@@ -29,19 +29,9 @@
 
 import Gdk from 'gi://Gdk?version=4.0';
 import Gio from 'gi://Gio';
+import GioUnix from 'gi://GioUnix';
 import GLib from 'gi://GLib';
 import Gtk from 'gi://Gtk?version=4.0';
-
-// GioUnix split out of Gio in GLib 2.80 (GNOME 46); the GNOME 44/45 builds
-// still find the unix streams on Gio itself. Looked up synchronously: a
-// top-level await would leave loop.run() inside a promise job, where the
-// awaits in deliver() never resume and every drop is lost.
-let GioUnix;
-try {
-  GioUnix = imports.gi.GioUnix;
-} catch {
-  GioUnix = {InputStream: Gio.UnixInputStream, OutputStream: Gio.UnixOutputStream};
-}
 
 const URI_LIST = 'text/uri-list';
 // the extension runs the trash / open / move itself: COPY keeps the source
@@ -62,9 +52,7 @@ const CSS = `
   }
   window.d2d-file-drops *:drop(active) { box-shadow: none; outline: none; }
 `;
-// load_from_string is GTK 4.12+; GNOME 44 ships GTK 4.10
-if (css.load_from_string) css.load_from_string(CSS);
-else css.load_from_data(CSS, -1);
+css.load_from_string(CSS);
 Gtk.StyleContext.add_provider_for_display(
   Gdk.Display.get_default(),
   css,

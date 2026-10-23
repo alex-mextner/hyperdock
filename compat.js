@@ -8,45 +8,20 @@ try {
 }
 
 /**
- * Robustly resolve application IDs from the Shell's AppFavorites manager.
- * Prefers the public getFavorites() API (returning Shell.App instances) and
- * getFavoriteMap() before falling back to private _getIds().
+ * Resolve application IDs from the Shell's AppFavorites manager through its
+ * public getFavorites() API (Shell.App instances).
  *
  * @param {object} favManager Shell AppFavorites instance
  * @returns {string[]} Array of app ID strings (e.g. ['org.gnome.Nautilus.desktop'])
  */
 export function getFavoriteAppIds(favManager) {
   if (!favManager) return [];
-  if (typeof favManager.getFavorites === 'function') {
-    try {
-      const apps = favManager.getFavorites();
-      if (Array.isArray(apps)) {
-        return apps
-          .map((a) => (typeof a?.get_id === 'function' ? a.get_id() : a?.id ?? ''))
-          .filter(Boolean);
-      }
-    } catch (e) {
-      console.error('d2da: compat getFavorites', e);
-    }
+  try {
+    return favManager.getFavorites().map((a) => a.get_id());
+  } catch (e) {
+    console.error('d2da: compat getFavorites', e);
+    return [];
   }
-  if (typeof favManager.getFavoriteMap === 'function') {
-    try {
-      const map = favManager.getFavoriteMap();
-      if (map && typeof map === 'object') {
-        return Object.keys(map);
-      }
-    } catch (e) {
-      console.error('d2da: compat getFavoriteMap', e);
-    }
-  }
-  if (typeof favManager._getIds === 'function') {
-    try {
-      return favManager._getIds();
-    } catch (e) {
-      console.error('d2da: compat _getIds fallback', e);
-    }
-  }
-  return [];
 }
 
 /**
@@ -69,41 +44,27 @@ export function isFavoriteApp(favManager, appId) {
 }
 
 /**
- * Safely resolve an application ID from an appwell (DashIcon / AppIcon).
- * Prefers public getId() and app.get_id() over private _id.
+ * Resolve an application ID from an appwell (AppIcon).
  *
- * @param {object} appwell DashIcon or AppIcon actor/instance
+ * @param {object} appwell AppIcon actor/instance
  * @returns {string} Application ID string or empty string
  */
 export function getAppId(appwell) {
   if (!appwell) return '';
-  if (typeof appwell.getId === 'function') {
-    try {
-      const id = appwell.getId();
-      if (id) return id;
-    } catch {
-      // ignore
-    }
+  try {
+    // `_id` is set by the dock's own custom icons (dockItems.js)
+    return appwell.getId?.() || appwell.app?.get_id?.() || appwell._id || '';
+  } catch {
+    return '';
   }
-  if (appwell.app && typeof appwell.app.get_id === 'function') {
-    try {
-      const id = appwell.app.get_id();
-      if (id) return id;
-    } catch {
-      // ignore
-    }
-  }
-  if (appwell.id) return appwell.id;
-  if (appwell._id) return appwell._id;
-  return '';
 }
 
 /**
- * Robustly extract the St.Icon from a DashIcon/AppIcon or ShowAppsIcon instance.
- * Supports GNOME 50 (_iconBin.child), GNOME 46 (icon.icon), direct St.Icon, and
- * lazy texture creation (_createIconTexture).
+ * Extract the St.Icon from an AppIcon or ShowAppsIcon: its BaseIcon (`icon`)
+ * owns the St.Icon as `.icon` once an icon size has been set, so an icon that
+ * has not laid out yet is forced to create its texture.
  *
- * @param {object} appwell DashIcon/AppIcon or ShowAppsIcon
+ * @param {object} appwell AppIcon or ShowAppsIcon
  * @returns {object|null} St.Icon instance or null
  */
 export function getStIcon(appwell) {
@@ -112,14 +73,8 @@ export function getStIcon(appwell) {
 
   if (St?.Icon && baseIcon instanceof St.Icon) return baseIcon;
   if (baseIcon.isStIcon) return baseIcon;
-
-  // GNOME 46 / setIconSize initialized: direct .icon property
   if (baseIcon.icon) return baseIcon.icon;
 
-  // GNOME 50: _iconBin.child
-  if (baseIcon._iconBin && baseIcon._iconBin.child) return baseIcon._iconBin.child;
-
-  // Force icon creation if not yet initialized
   try {
     if (typeof baseIcon.setIconSize === 'function') {
       const size =
@@ -128,7 +83,6 @@ export function getStIcon(appwell) {
           : 48;
       baseIcon._createIconTexture(size);
       if (baseIcon.icon) return baseIcon.icon;
-      if (baseIcon._iconBin && baseIcon._iconBin.child) return baseIcon._iconBin.child;
     }
   } catch {
     // ignore initialization errors
@@ -159,38 +113,28 @@ export function showOverviewApps(overview) {
 }
 
 /**
- * Feature-detect and trigger window maximize across Mutter versions.
- * In modern Mutter (GNOME 49+), flags were dropped and maximize takes 0 args.
- * In older Mutter, maximize expects Meta.MaximizeFlags.BOTH (3).
+ * Maximize a window (Mutter 49+ takes no flags).
  *
  * @param {object} win Meta.Window instance
  */
 export function maximizeWindow(win) {
-  if (!win || typeof win.maximize !== 'function') return;
+  if (!win) return;
   try {
-    if (win.maximize.length === 0) {
-      win.maximize();
-    } else {
-      win.maximize(3);
-    }
+    win.maximize();
   } catch (e) {
     console.error('d2da: compat maximizeWindow', e);
   }
 }
 
 /**
- * Feature-detect and trigger window unmaximize across Mutter versions.
+ * Unmaximize a window.
  *
  * @param {object} win Meta.Window instance
  */
 export function unmaximizeWindow(win) {
-  if (!win || typeof win.unmaximize !== 'function') return;
+  if (!win) return;
   try {
-    if (win.unmaximize.length === 0) {
-      win.unmaximize();
-    } else {
-      win.unmaximize(3);
-    }
+    win.unmaximize();
   } catch (e) {
     console.error('d2da: compat unmaximizeWindow', e);
   }
@@ -204,7 +148,7 @@ export function unmaximizeWindow(win) {
  */
 export function getDashBox(dash) {
   if (!dash) return null;
-  return dash._box ?? dash._dashContainer?._box ?? null;
+  return dash._box ?? null;
 }
 
 /**
@@ -215,7 +159,7 @@ export function getDashBox(dash) {
  */
 export function getDashContainer(dash) {
   if (!dash) return null;
-  return dash._dashContainer ?? dash.last_child ?? null;
+  return dash._dashContainer ?? null;
 }
 
 /**
