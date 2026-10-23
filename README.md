@@ -1,9 +1,8 @@
 # Hyperdock
 
-A GNOME Shell 40+ Extension
+A macOS-style dock for GNOME Shell 50
 
-[!["Buy Me A Coffee"](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://www.buymeacoffee.com/icedman)
-[![Ko-fi](https://img.shields.io/badge/Ko--fi-F16061?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/icedman)
+Based on [Dash2Dock Animated](https://github.com/icedman/dash2dock-lite) by icedman (GPL-3.0).
 
 ![Contributors](https://img.shields.io/github/contributors/alex-mextner/hyperdock?color=dark-green) ![Forks](https://img.shields.io/github/forks/alex-mextner/hyperdock?style=social) ![Stargazers](https://img.shields.io/github/stars/alex-mextner/hyperdock?style=social) ![Issues](https://img.shields.io/github/issues/alex-mextner/hyperdock) ![License](https://img.shields.io/github/license/alex-mextner/hyperdock) ![GitHub Downloads](https://img.shields.io/github/downloads/alex-mextner/hyperdock/total)
 
@@ -15,11 +14,11 @@ Maintenance and GNOME version compatibility updates are now primarily assisted b
 
 Due to GNOME Extensions reviewer policies regarding AI tooling, updates will no longer be submitted to extensions.gnome.org and will be published exclusively through this repository. Releases will include simple installation instructions.
 
-If you prefer strictly human-written code, feel free to skip this extension. If you enjoy having updates keep pace with new GNOME releases and want to help fund the AI compute tokens keeping it alive, support via [Buy Me A Coffee](https://www.buymeacoffee.com/icedman) or [Ko-fi](https://ko-fi.com/icedman) is greatly appreciated.
+If you prefer strictly human-written code, feel free to skip this extension.
 
 ### Notice
 
-* Supports GNOME Shell 50 only (Ubuntu 26.04). For older GNOME versions use upstream [dash2dock-lite](https://github.com/icedman/dash2dock-lite).
+* Supports GNOME Shell 50 only (Ubuntu 26.04). For older GNOME versions use the upstream project credited above.
 
 ### Features
 

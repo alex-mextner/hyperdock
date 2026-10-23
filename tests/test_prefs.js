@@ -229,6 +229,10 @@ app.connect('activate', (me) => {
       name: 'open-license',
       link: 'https://github.com/alex-mextner/hyperdock/blob/mac-tahoe/LICENSE',
     },
+    {
+      name: 'open-upstream',
+      link: 'https://github.com/icedman/dash2dock-lite',
+    },
   ];
 
   actions.forEach((action) => {

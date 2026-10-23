@@ -206,7 +206,7 @@ if [ -n "$GNOME_MAJOR" ]; then
     echo "Proceeding with force install..."
   elif [ "$GNOME_MAJOR" -lt 50 ]; then
     echo "Error: Hyperdock requires GNOME Shell 50; your system runs GNOME ${GNOME_MAJOR}." >&2
-    echo "       For older GNOME versions use upstream dash2dock-lite." >&2
+    echo "       For older GNOME versions use the upstream project." >&2
     exit 1
   fi
 fi
@@ -291,11 +291,4 @@ fi
 echo "  - If the dock does not appear immediately, restart GNOME Shell:"
 echo "     * On X11: Press Alt+F2, type 'r', and press Enter."
 echo "     * On Wayland: Log out and log back in."
-echo ""
-echo "-----------------------------------------"
-echo "Support Hyperdock:"
-echo "  If you enjoy this extension, consider supporting development:"
-echo "  - Buy Me A Coffee: https://www.buymeacoffee.com/icedman"
-echo "  - Ko-fi:           https://ko-fi.com/icedman"
-echo "-----------------------------------------"
 echo ""
