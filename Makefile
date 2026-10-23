@@ -7,7 +7,7 @@ RUNTIME_DIR ?= $(or $(XDG_RUNTIME_DIR),/run/user/$(shell id -u))
 # (e.g. nested shell killed early) the next run starts with all extensions off.
 DISABLE_EXT_FLAG = $(RUNTIME_DIR)/gnome-shell-disable-extensions
 MUTTER_DEVKIT ?= /usr/libexec/mutter-devkit
-EXT_DIR = $(HOME)/.local/share/gnome-shell/extensions/dash2dock-lite@icedman.github.com
+EXT_DIR = $(HOME)/.local/share/gnome-shell/extensions/hyperdock@alex-mextner.github.com
 
 # GNOME 49+: `gnome-shell --devkit` runs headless and spawns mutter-devkit as
 # the viewer window. Without it the shell runs but no window ever appears.
@@ -55,10 +55,10 @@ install-zip: check-install-dir
 	echo "installing zip..."
 	rm -rf "$(EXT_DIR)"
 	mkdir -p "$(EXT_DIR)/"
-	unzip -q dash2dock-lite@icedman.github.com.zip -d "$(EXT_DIR)/"
+	unzip -q hyperdock@alex-mextner.github.com.zip -d "$(EXT_DIR)/"
 
 test-prefs:
-	gnome-extensions prefs dash2dock-lite@icedman.github.com
+	gnome-extensions prefs hyperdock@alex-mextner.github.com
 
 test-shell: check-devkit install
 	rm -f $(DISABLE_EXT_FLAG)
@@ -89,7 +89,7 @@ build-g44: build
 	cp -R ./ui ./build
 	cp -R apps/*.sh ./build/apps
 	cp -R apps/*.desktop ./build/apps
-	rm -rf build/apps/mount-dash2dock-lite.desktop
+	rm -rf build/apps/mount-hyperdock.desktop
 	cp ./effects/*.glsl ./build/effects
 	cp ./LICENSE* ./build
 	-cp ./CHANGELOG* ./build 2>/dev/null || true
@@ -107,10 +107,10 @@ g44: build-g44 check-install-dir
 publish-g44: build-g44
 	echo "publishing..."
 	cd build ; \
-	zip -qr ../dash2dock-lite@icedman.github.com.zip .
+	zip -qr ../hyperdock@alex-mextner.github.com.zip .
 
 test-prefs-g44: g44
-	gnome-extensions prefs dash2dock-lite@icedman.github.com
+	gnome-extensions prefs hyperdock@alex-mextner.github.com
 
 test-shell-g44: g44
 	env GNOME_SHELL_SLOWDOWN_FACTOR=2 \

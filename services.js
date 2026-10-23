@@ -369,7 +369,7 @@ export const Services = class {
 
   setupTrashIcon() {
     let open_app = 'nautilus --select';
-    let content = `[Desktop Entry]\nVersion=1.0\nTerminal=false\nType=Application\nName=Trash\nExec=${open_app} trash:///\nIcon=user-trash\nStartupWMClass=trash-dash2dock-lite\nActions=trash;\n\n[Desktop Action trash]\nName=Empty Trash\nExec=gio trash --empty\nTerminal=false\n`;
+    let content = `[Desktop Entry]\nVersion=1.0\nTerminal=false\nType=Application\nName=Trash\nExec=${open_app} trash:///\nIcon=user-trash\nStartupWMClass=trash-hyperdock\nActions=trash;\n\n[Desktop Action trash]\nName=Empty Trash\nExec=gio trash --empty\nTerminal=false\n`;
     this.trashApp = this._createAppInfoFromData(content);
     return this.trashApp;
   }
@@ -407,7 +407,7 @@ export const Services = class {
   // the stack's dock item; activating it opens the folder itself
   setupFolderIcon(name, title, icon, path) {
     let exec = `nautilus ${this._execArg(Gio.File.new_for_path(path).get_path())}`;
-    let content = `[Desktop Entry]\nVersion=1.0\nTerminal=false\nType=Application\nName=${this._escapeDesktopValue(title)}\nExec=${exec}\nIcon=${this._escapeDesktopValue(icon)}\nStartupWMClass=${this._toSafeFileName(name)}-dash2dock-lite\n`;
+    let content = `[Desktop Entry]\nVersion=1.0\nTerminal=false\nType=Application\nName=${this._escapeDesktopValue(title)}\nExec=${exec}\nIcon=${this._escapeDesktopValue(icon)}\nStartupWMClass=${this._toSafeFileName(name)}-hyperdock\n`;
     return this._createAppInfoFromData(content);
   }
 
@@ -923,7 +923,7 @@ export const Services = class {
       uri,
       -1
     );
-    return `mount-${key}-dash2dock-lite.desktop`;
+    return `mount-${key}-hyperdock.desktop`;
   }
 
   _escapeDesktopValue(value) {

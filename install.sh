@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# Dash2Dock Animated One-Line Installer
+# Hyperdock One-Line Installer
 # Usage:
-#   curl -sSL https://raw.githubusercontent.com/icedman/dash2dock-lite/main/install.sh | bash
+#   curl -sSL https://raw.githubusercontent.com/alex-mextner/hyperdock/main/install.sh | bash
 #   or
-#   bash <(curl -sSL https://raw.githubusercontent.com/icedman/dash2dock-lite/main/install.sh)
+#   bash <(curl -sSL https://raw.githubusercontent.com/alex-mextner/hyperdock/main/install.sh)
 
 set -euo pipefail
 
-REPO="icedman/dash2dock-lite"
-UUID="dash2dock-lite@icedman.github.com"
+REPO="alex-mextner/hyperdock"
+UUID="hyperdock@alex-mextner.github.com"
 INSTALL_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/gnome-shell/extensions/${UUID}"
 
 echo "========================================="
-echo "   Dash2Dock Animated Installer"
+echo "   Hyperdock Installer"
 echo "========================================="
 
 # 1. Dependency checks
@@ -43,7 +43,7 @@ else
   if [ -n "$DESKTOP" ]; then
     echo "    Current desktop session reported: ${DESKTOP}"
   fi
-  echo "    Dash2Dock Animated requires GNOME Shell (42-50+). Installation can proceed,"
+  echo "    Hyperdock requires GNOME Shell (42-50+). Installation can proceed,"
   echo "    but the extension will only function inside a GNOME desktop session."
 fi
 echo ""
@@ -276,7 +276,7 @@ echo "========================================="
 # Ask to enable the extension
 if command -v gnome-extensions >/dev/null 2>&1; then
   echo ""
-  printf "Would you like to enable Dash2Dock Animated now? [Y/n]: "
+  printf "Would you like to enable Hyperdock now? [Y/n]: "
   read -r enable_confirm < "$INPUT_SRC" || enable_confirm="y"
   if [[ ! "${enable_confirm,,}" =~ ^n ]]; then
     echo "Enabling extension $UUID..."
@@ -300,7 +300,7 @@ echo "     * On X11: Press Alt+F2, type 'r', and press Enter."
 echo "     * On Wayland: Log out and log back in."
 echo ""
 echo "-----------------------------------------"
-echo "Support Dash2Dock Animated:"
+echo "Support Hyperdock:"
 echo "  If you enjoy this extension, consider supporting development:"
 echo "  - Buy Me A Coffee: https://www.buymeacoffee.com/icedman"
 echo "  - Ko-fi:           https://ko-fi.com/icedman"

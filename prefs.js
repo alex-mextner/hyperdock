@@ -7,7 +7,7 @@ import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Adw from 'gi://Adw';
 
-const GETTEXT_DOMAIN = 'dash2dock-light';
+const GETTEXT_DOMAIN = 'hyperdock';
 
 import { schemaId, SettingsKeys } from './preferences/keys.js';
 import { MonitorsConfig } from './monitors.js';
@@ -73,11 +73,11 @@ export default class Preferences extends ExtensionPreferences {
     const actions = [
       {
         name: 'open-bug-report',
-        link: 'https://github.com/icedman/dash2dock-lite/issues',
+        link: 'https://github.com/alex-mextner/hyperdock/issues',
       },
       {
         name: 'open-readme',
-        link: 'https://github.com/icedman/dash2dock-lite',
+        link: 'https://github.com/alex-mextner/hyperdock',
       },
       {
         name: 'open-buy-coffee',
@@ -85,7 +85,7 @@ export default class Preferences extends ExtensionPreferences {
       },
       {
         name: 'open-license',
-        link: 'https://github.com/icedman/dash2dock-lite/blob/master/LICENSE',
+        link: 'https://github.com/alex-mextner/hyperdock/blob/mac-tahoe/LICENSE',
       },
     ];
 

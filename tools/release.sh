@@ -32,8 +32,8 @@ Commands:
 
   package <version>
       Builds distribution packages:
-      - Standard EGO zip: dash2dock-lite@icedman.github.com.zip
-      - Release zip: dash2dock-lite-v<version>.zip
+      - Standard EGO zip: hyperdock@alex-mextner.github.com.zip
+      - Release zip: hyperdock-v<version>.zip
       Example: $0 package 50.0
 
   publish <version> [remote]
@@ -169,8 +169,8 @@ EOF
     VERSION="${VERSION#v}"
     TAG="v${VERSION}"
     CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
-    VERSIONED_ZIP="dash2dock-lite-v${VERSION}.zip"
-    EGO_ZIP="dash2dock-lite@icedman.github.com.zip"
+    VERSIONED_ZIP="hyperdock-v${VERSION}.zip"
+    EGO_ZIP="hyperdock@alex-mextner.github.com.zip"
 
     # Verify packages exist
     if [ ! -f "$VERSIONED_ZIP" ] || [ ! -f "$EGO_ZIP" ]; then
@@ -210,7 +210,7 @@ EOF
       gh release create "$TAG" \
         "$VERSIONED_ZIP" \
         "$EGO_ZIP" \
-        --title "Dash2Dock Animated ${TAG}" \
+        --title "Hyperdock ${TAG}" \
         --generate-notes || {
           echo "Warning: gh release create failed. Please create release manually on GitHub."
         }
@@ -218,7 +218,7 @@ EOF
       echo "==> 'gh' CLI not found. You can upload the generated zips to GitHub manually:"
       echo "    Artifact 1: $REPO_ROOT/$VERSIONED_ZIP"
       echo "    Artifact 2: $REPO_ROOT/$EGO_ZIP"
-      echo "    URL: https://github.com/icedman/dash2dock-lite/releases/new?tag=${TAG}"
+      echo "    URL: https://github.com/alex-mextner/hyperdock/releases/new?tag=${TAG}"
     fi
 
     echo "==> To submit to GNOME Extensions (EGO):"

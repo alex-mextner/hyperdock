@@ -206,7 +206,7 @@ const REACTIONS = Object.freeze({
   'file-drops': ['file_drops'],
 });
 
-export default class Dash2DockLiteExt extends Extension {
+export default class HyperdockExt extends Extension {
   createDock() {
     let d = new Dock({ extension: this });
     d.extension = this;
@@ -397,7 +397,7 @@ export default class Dash2DockLiteExt extends Extension {
     this._queryDisplay();
     // this.startUp();
 
-    console.log('dash2dock-lite enabled');
+    console.log('hyperdock enabled');
 
     // to allow dynamic imports
     this._loTimer.runOnce(() => {
@@ -468,7 +468,7 @@ export default class Dash2DockLiteExt extends Extension {
     delete this.icon_theme;
     this.icon_theme = null;
 
-    console.log('dash2dock-lite disabled');
+    console.log('hyperdock disabled');
 
     probe(this, 'after-disable', probeTimers);
   }
