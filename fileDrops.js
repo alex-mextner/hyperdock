@@ -45,33 +45,21 @@ const NAUTILUS_BUS = 'org.gnome.Nautilus';
 const NAUTILUS_PATH = '/org/gnome/Nautilus/FileOperations2';
 const NAUTILUS_IFACE = 'org.gnome.Nautilus.FileOperations2';
 
-// Mutter 49+ types the window itself; 46-48 do it through the client and 45
-// has no dock type (make_above keeps it over normal windows there).
 function spawnClient(argv) {
   const launcher = new Gio.SubprocessLauncher({
     flags: Gio.SubprocessFlags.STDIN_PIPE | Gio.SubprocessFlags.STDOUT_PIPE,
   });
-  if (Meta.WaylandClient.new_subprocess) {
-    const client = Meta.WaylandClient.new_subprocess(
-      global.context,
-      launcher,
-      argv
-    );
-    return [client, client.get_subprocess()];
-  }
-  const client = Meta.WaylandClient.new(global.context, launcher);
-  return [client, client.spawnv(global.display, argv)];
+  const client = Meta.WaylandClient.new_subprocess(
+    global.context,
+    launcher,
+    argv
+  );
+  return [client, client.get_subprocess()];
 }
 
-function makeDockWindow(client, window) {
-  if (window.set_type) {
-    window.set_type(Meta.WindowType.DOCK);
-    window.hide_from_window_list();
-  } else {
-    if (client.make_dock) client.make_dock(window);
-    else window.make_above();
-    client.hide_from_window_list(window);
-  }
+function makeDockWindow(window) {
+  window.set_type(Meta.WindowType.DOCK);
+  window.hide_from_window_list();
   window.stick();
 }
 
@@ -152,11 +140,6 @@ export class FileDrops {
   }
 
   enable() {
-    // GNOME 49+ is Wayland only and dropped the check
-    if (Meta.is_wayland_compositor && !Meta.is_wayland_compositor()) {
-      console.log('d2da: file-drops needs a Wayland session');
-      return;
-    }
     const dnd = global.backend.get_dnd();
     dnd.connectObject(
       'dnd-enter',
@@ -392,7 +375,7 @@ export class FileDrops {
 
   _onWindowCreated(window) {
     if (!this._client?.owns_window(window)) return;
-    makeDockWindow(this._client, window);
+    makeDockWindow(window);
     this._windows.push(window);
     const t = this._targets.find((t) => !t.window);
     if (t) t.window = window;

@@ -790,23 +790,21 @@ export let Dock = GObject.registerClass(
       return apps + others;
     }
 
-    // Structure for dash icon container widgets - g42,g43,g44,g45,g46
+    // Structure for dash icon container widgets
     /**
      *  DashItemContainer
      *    > child (DashIcon[appwell])
-     *      > .icon (IconGrid)
+     *      > .icon (BaseIcon)
      *        > .icon (StIcon)
      *      > ._dot
      *    > .label
      *
      *  ShowAppsIcon extends DashItemContainer
-     *    > .icon (IconGrid)
+     *    > .icon (BaseIcon)
      *      > .icon
-     *    > ._iconActor
      */
 
-    // Helper: robustly get the StIcon from a DashIcon/AppIcon instance
-    // Supports both GNOME 46 (old) and GNOME 50 (new) structures
+    // Helper: get the StIcon from a DashIcon/AppIcon instance
     _getStIconFromAppwell(appwell) {
       return Compat.getStIcon(appwell);
     }
@@ -850,11 +848,11 @@ export let Dock = GObject.registerClass(
       }
 
       /* ShowAppsIcon */
-      if (c.icon /* BaseIcon or old IconGrid */) {
-        let stIcon = Compat.getStIcon(c) ?? c.icon.icon;
+      if (c.icon /* BaseIcon */) {
+        let stIcon = Compat.getStIcon(c);
         if (stIcon) {
           c._icon = stIcon;
-          // GNOME 50: child is toggleButton; GNOME 46: child is the button directly
+          // child is the toggle button
           c._button = c.child;
           try {
             c.icon.style = 'background-color: transparent !important;';
@@ -868,11 +866,11 @@ export let Dock = GObject.registerClass(
       if (c.child /* DashIcon/AppIcon */) {
         let appwell = c.child;
         let stIcon = null;
-        if (appwell.icon /* BaseIcon or old IconGrid */) {
-          stIcon = Compat.getStIcon(appwell) ?? appwell.icon.icon;
+        if (appwell.icon /* BaseIcon */) {
+          stIcon = Compat.getStIcon(appwell);
         }
         if (stIcon) {
-          c._grid = appwell.icon; // BaseIcon or old IconGrid
+          c._grid = appwell.icon; // BaseIcon
           c._icon = stIcon;
           c._appwell = appwell;
           if (c._appwell) {
@@ -1269,7 +1267,6 @@ export let Dock = GObject.registerClass(
         //! find a way to avoid this
         path: `${this.extension.path}/apps/recents-hyperdock.desktop`,
         // not ready for prime time
-        // does not work on gnome 43 (debian)
         show: false, // this.extension.documents_icon,
         prepare: () => services.checkRecents(),
         files: () => services._recentFiles,
