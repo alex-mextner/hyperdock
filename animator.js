@@ -13,6 +13,9 @@ import { DockPosition } from './dock.js';
 import { Vector } from './vector.js';
 import { DockLayout } from './dockLayout.js';
 
+import { smoothScaling } from './textureFilters.js';
+import { IconNormalizer } from './iconNormalizer.js';
+import { IDENTITY_NORMALIZATION, snapToPixel } from './iconGeometry.js';
 import { DockItemDotsOverlay, DockItemBadgeOverlay } from './dockItems.js';
 import { live } from './probe.js';
 import {
@@ -38,6 +41,13 @@ const PRESENCE_RATE = 0.2;
 const PRESENCE_DONE = 0.995;
 // frames go on while an icon is further than this (px) from where it is going
 const SETTLE_EPSILON = 0.25;
+
+// 35% of the remaining distance per frame; snaps once it is imperceptible
+function easeToward(current, target) {
+  return Math.abs(target - current) < 0.001
+    ? target
+    : current + (target - current) * 0.35;
+}
 
 export let Animator = class {
   constructor() {
@@ -71,9 +81,13 @@ export let Animator = class {
       this._badges = [];
     }
     this._computed = null;
+    this._normalizer ??= new IconNormalizer();
+    this._normalizer.onChange = () => this.dock?._beginAnimation('icon-normalized');
   }
 
   disable() {
+    this._normalizer?.destroy();
+    this._normalizer = null;
     this._destroyPool();
     // only non-pool children are left (services' clock/calendar); they are
     // just unparented until R-7b destroys them with their item
@@ -123,6 +137,11 @@ export let Animator = class {
         icon_size: 24,
       });
       renderer.visible = false;
+      // St.Icon draws through an inner texture actor that Shell swaps on every
+      // icon change: mipmapped minification keeps magnified icons from
+      // shimmering while their scale changes
+      renderer.get_children().forEach(smoothScaling);
+      renderer.connect('child-added', (_, child) => smoothScaling(child));
       target.add_child(renderer);
       this._renderers.push(renderer);
 
@@ -218,7 +237,7 @@ export let Animator = class {
 
   _animate(dt) {
     let dock = this.dock;
-    if (!dock) return;
+    if (!dock || !this._normalizer) return;
 
     if (dock._hoveredIcon) {
       dock._lastHoveredIcon = dock._hoveredIcon;
@@ -448,6 +467,7 @@ export let Animator = class {
     // interpolation / animation
     //-------------------
     let renderOffset = dock.renderArea.get_transformed_position();
+    const pixelScale = dock._monitor?.geometry_scale || 1;
     if (!renderOffset || isNaN(renderOffset[0]) || isNaN(renderOffset[1])) {
       return;
     }
@@ -625,11 +645,42 @@ export let Animator = class {
         }
 
         //-------------------
-        // animate scaling at renderer
+        // size correction: opaque bbox measured once per icon (normalizer)
         //-------------------
         let unscaledIconSize = dock._iconSizeScaledDown * scaleFactor;
+        // texture is sampled down only: it covers the largest magnified size
+        // in steps of 16 so a small layout change does not reload every texture
+        let baseSize = Math.max(
+          32 * (dock.extension.icon_quality || 1),
+          Math.ceil((unscaledIconSize * scaleAtMax) / 16) * 16
+        );
+        let normSrc = gicon || icon_name || icon._icon.gicon;
+        if (
+          renderer._normSrc !== normSrc ||
+          renderer._normBase !== baseSize ||
+          renderer._normVersion !== this._normalizer.version
+        ) {
+          renderer._normSrc = normSrc;
+          renderer._normBase = baseSize;
+          renderer._normVersion = this._normalizer.version;
+          renderer._norm = this._normalizer.get(normSrc, baseSize);
+        }
+        // eased in: a measurement lands a few frames after the icon appears
+        let norm = renderer._norm || IDENTITY_NORMALIZATION;
+        let appliedK = easeToward(renderer._appliedK ?? 1, norm.k);
+        let appliedDx = easeToward(renderer._appliedDx ?? 0, norm.dx);
+        let appliedDy = easeToward(renderer._appliedDy ?? 0, norm.dy);
+        renderer._appliedDx = appliedDx;
+        renderer._appliedDy = appliedDy;
+        icon._contentFill = easeToward(icon._contentFill ?? 1, norm.fill);
+
+        //-------------------
+        // animate scaling at renderer
+        //-------------------
         let targetSize = unscaledIconSize * icon._targetScale;
-        let currentSize = renderer.icon_size * renderer.scaleX;
+        // slot size the renderer showed last frame, without the correction
+        let currentSize =
+          (renderer.icon_size * renderer.scaleX) / (renderer._appliedK || 1);
         {
           let dst = targetSize - currentSize;
           let mag = Math.abs(dst);
@@ -649,12 +700,12 @@ export let Animator = class {
         // compute icon scale based on size
         icon._scale = targetSize / unscaledIconSize;
 
-        let baseSize = 32 * (dock.extension.icon_quality || 1);
         if (renderer.icon_size != baseSize) {
           renderer.set_size(baseSize, baseSize);
           renderer.set_icon_size(baseSize);
         }
-        let scaleToTarget = targetSize / baseSize;
+        renderer._appliedK = appliedK;
+        let scaleToTarget = (targetSize * appliedK) / baseSize;
         renderer.set_scale(scaleToTarget, scaleToTarget);
 
         let p = icon.get_transformed_position();
@@ -683,10 +734,27 @@ export let Animator = class {
               iconContainer.translationY = adjustY / 2;
             }
 
-            let ry = p[1] + adjustY + icon._icon.translationY - renderOffset[1];
+            // physical pixel grid: a fractional phase shimmers while scaling
+            let slotX = snapToPixel(
+              p[0] + adjustX + icon._icon.translationX,
+              pixelScale
+            ) - renderOffset[0];
+            let slotY = snapToPixel(
+              p[1] + adjustY + icon._icon.translationY,
+              pixelScale
+            ) - renderOffset[1];
+            icon._slotX = slotX;
+            icon._slotY = slotY;
+            icon._slotSize = targetSize;
             renderer.set_position(
-              p[0] + adjustX + icon._icon.translationX - renderOffset[0],
-              ry
+              snapToPixel(
+                slotX + renderOffset[0] + (targetSize - targetSize * appliedK) / 2 + appliedDx * targetSize,
+                pixelScale
+              ) - renderOffset[0],
+              snapToPixel(
+                slotY + renderOffset[1] + (targetSize - targetSize * appliedK) / 2 + appliedDy * targetSize,
+                pixelScale
+              ) - renderOffset[1]
             );
 
             // renderer.ease({
@@ -843,7 +911,7 @@ export let Animator = class {
       ) {
         let appCount = dock.getAppWindowsFiltered(icon._appwell.app).length;
         // appCount = 1;
-        if (dots && appCount > 0) {
+        if (dots && appCount > 0 && icon._slotSize > 0) {
           dots.update(icon, {
             appCount,
             position: dock._position,
@@ -851,12 +919,6 @@ export let Animator = class {
             extension: dock.extension,
             dock,
           });
-
-          dots.width = icon._renderer.width * icon._renderer.scaleX;
-          dots.height = dots.width;
-          dots.x = icon._renderer.x;
-          dots.y = icon._renderer.y;
-          dots.set_scale(icon._scale, icon._scale);
           dots.show();
         }
       }

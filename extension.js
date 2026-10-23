@@ -38,7 +38,7 @@ import { Integrations } from './integrations.js';
 import { WindowTracker } from './windowTracker.js';
 import { WindowFeedback } from './windowFeedback.js';
 import { runTests } from './diagnostics.js';
-import { probe, applySmokeSettings } from './probe.js';
+import { probe, applySmokeSettings, smokeShots } from './probe.js';
 import * as Compat from './compat.js';
 import { WallpaperTone, markColors } from './contrast.js';
 import { HotkeysOverlay } from './hotkeysOverlay.js';
@@ -517,6 +517,7 @@ export default class HyperdockExt extends Extension {
     }, 10);
 
     probe(this, 'after-enable');
+    smokeShots(this);
   }
 
   _autohiders() {

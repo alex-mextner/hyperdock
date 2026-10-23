@@ -21,6 +21,7 @@ import St from 'gi://St';
 
 import { GlassPlatter } from './effects/glass.js';
 import { trySpawnCommandLine } from './utils.js';
+import { smoothScaling } from './textureFilters.js';
 
 // index order = the int value of the downloads-stack-* settings; index 0 is the
 // upstream behaviour
@@ -487,6 +488,7 @@ export const StackPanel = GObject.registerClass(
           scale,
           1
         );
+        smoothScaling(picture);
         picture.x_align = Clutter.ActorAlign.CENTER;
         picture.y_align = Clutter.ActorAlign.CENTER;
         bin.set_child(picture);

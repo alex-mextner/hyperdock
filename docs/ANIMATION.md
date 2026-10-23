@@ -248,6 +248,12 @@ This is the default production stage. It executes the full deterministic horizon
   $$x'_{i,\text{stage2}} = x_i + A_i \cdot e_i$$
 * **Visual Profile**: The coordinate space itself is stretched symmetrically under the cursor and anchored at the boundaries. Icons are dynamically spread apart to accommodate their magnified sizes, completely eliminating overlap while aligning the active icon perfectly under the pointer.
 
+### Icon rendering (size, sampling, indicator)
+Each icon is a pooled `St.Icon` renderer drawn at a fixed texture size and scaled by the animator.
+* **Size normalization** (`iconGeometry.js`, `iconNormalizer.js`): the opaque bounding box (alpha > 64) of every gicon is measured once, off the animation path, and cached per gicon and size bucket. The renderer scale gets a correction $k = 0.9 / \max(\text{bbox}_w, \text{bbox}_h)$ and the canvas is shifted so the bbox centre sits on the slot centre. The slot (layout footprint) is untouched, so a full-canvas icon such as Chrome ends up the same visible size as one with a transparent margin.
+* **Sampling**: the texture is loaded at no less than the largest magnified size (`unscaledIconSize * (1 + magnify)`), so the GPU only minifies; content actors use `TRILINEAR` minification (`textureFilters.js`), renderer positions are snapped to the physical pixel grid, and `renderArea` redirects offscreen only while the dock fades.
+* **Running indicator**: the overlay is the slot square; `indicatorBand()` gives the band each style paints (checked against the real `apps/dot.js` drawing by `tests/dot_band_check.js`) and `indicatorShift()` moves it so its icon-facing edge sits a gap past the visible content on the docked side, for all four positions.
+
 ---
 
 ## 6. Reference Implementation

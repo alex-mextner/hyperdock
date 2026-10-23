@@ -35,7 +35,7 @@ export const Dot = GObject.registerClass(
   }
 );
 
-const DotCanvas = GObject.registerClass(
+export const DotCanvas = GObject.registerClass(
   {},
   class DotCanvas extends St.DrawingArea {
     _init(settings = {}) {
