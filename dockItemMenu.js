@@ -18,6 +18,8 @@ const Point = Graphene.Point;
 import { DockPosition } from './dock.js';
 import { Vector } from './vector.js';
 import { StackPanel, previewFile } from './stackPanel.js';
+import { smoothScaling } from './textureFilters.js';
+import { snapToPixel } from './iconGeometry.js';
 
 const ANIM_POSITION_PER_SEC = 450 / 1000;
 
@@ -192,6 +194,7 @@ export const DockItemList = GObject.registerClass(
               1,
               dock._monitor.geometry_scale
             );
+            smoothScaling(_icon);
             w._icon.layout_manager = new Clutter.BinLayout();
           } else {
             _icon = new St.Icon({
@@ -426,8 +429,10 @@ export const DockItemList = GObject.registerClass(
           waypoints.shift();
           posVector = wp;
         }
-        c.x = posVector.x;
-        c.y = posVector.y;
+        // physical pixel grid: a fractional phase makes the picture shimmer
+        let pixelScale = dock._monitor.geometry_scale || 1;
+        c.x = snapToPixel(posVector.x, pixelScale);
+        c.y = snapToPixel(posVector.y, pixelScale);
 
         c._label_container.x = c.x;
         c._label_container.y = c.y;

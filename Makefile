@@ -7,6 +7,8 @@ RUNTIME_DIR ?= $(or $(XDG_RUNTIME_DIR),/run/user/$(shell id -u))
 # (e.g. nested shell killed early) the next run starts with all extensions off.
 DISABLE_EXT_FLAG = $(RUNTIME_DIR)/gnome-shell-disable-extensions
 MUTTER_DEVKIT ?= /usr/libexec/mutter-devkit
+SHELL_LIBDIR = /usr/lib/gnome-shell
+MUTTER_LIBDIR = $(firstword $(wildcard /usr/lib/*/mutter-*))
 EXT_DIR = $(HOME)/.local/share/gnome-shell/extensions/hyperdock@alex-mextner.github.com
 
 # GNOME 49+: `gnome-shell --devkit` runs headless and spawns mutter-devkit as
@@ -89,6 +91,11 @@ check:
 		-o -path ./tools -prune -o -path ./ci -prune -o -name '*.js' -print \
 		| xargs -n1 node --check
 	node tests/dock_layout_check.js
+	gjs -m tests/icon_geometry_check.js
+	@if [ -d $(SHELL_LIBDIR) ]; then \
+		GI_TYPELIB_PATH=$(SHELL_LIBDIR):$(MUTTER_LIBDIR) LD_LIBRARY_PATH=$(SHELL_LIBDIR):$(MUTTER_LIBDIR) \
+			gjs -m tests/dot_band_check.js; \
+	else echo "check: skipping tests/dot_band_check.js (no $(SHELL_LIBDIR))"; fi
 	@echo "check: OK"
 
 # schema <-> preferences/keys.js <-> ui/*.ui <-> runtime refs. Exits 1 on

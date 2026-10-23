@@ -23,6 +23,10 @@ import {
 } from 'resource:///org/gnome/shell/ui/dash.js';
 
 import { DockPosition } from './dock.js';
+import { indicatorBand, indicatorShift, outward } from './iconGeometry.js';
+
+// gap between the visible icon and the running indicator, share of the slot
+const INDICATOR_GAP = 0.06;
 
 class DockItemMenu extends PopupMenu.PopupMenu {
   constructor(sourceActor, side = St.Side.TOP, params = {}) {
@@ -167,49 +171,48 @@ export const DockItemDotsOverlay = GObject.registerClass(
 
     update(icon, data) {
       let renderer = this.renderer;
-      let { appCount, position, vertical, extension, dock } = data;
-
-      renderer.width = dock._iconSizeScaledDown || icon._icon.width;
-      renderer.height = dock._iconSizeScaledDown || icon._icon.height;
-      renderer.pivot_point = icon._icon.pivot_point;
-
-      let canvasScale = renderer.width / renderer._canvas.width;
-
-      // scaling fix
-      let scale = dock._monitor.geometry_scale || 1;
-      canvasScale *= scale;
-      renderer._canvas.set_scale(canvasScale, canvasScale);
-
-      let offsetX = 0;
-      let offsetY = renderer.height * 0.125 * scale;
-      if (vertical) {
-        offsetX = -offsetY;
-        if (position == DockPosition.RIGHT) {
-          offsetX = offsetY;
-        }
-        offsetY = 0;
-      } else {
-        if (position == DockPosition.TOP) {
-          offsetY = -offsetY;
-        }
-      }
-
-      // renderer.translationX = icon._icon.translationX + offsetX;
-      // renderer.translationY = icon._icon.translationY + offsetY;
-
-      renderer.translationX = offsetX;
-      renderer.translationY = offsetY;
+      let { appCount, position, vertical, extension } = data;
 
       let options = extension.running_indicator_style_options;
       let running_indicator_style = options[extension.running_indicator_style];
+
+      // The overlay is the icon's slot square, unscaled; the band is then
+      // moved clear of the visible icon from the slot geometry alone.
+      let size = icon._slotSize;
+      this.set_position(icon._slotX, icon._slotY);
+      this.set_size(size, size);
+      this.set_scale(1, 1);
+      renderer.set_size(size, size);
+
+      let canvasScale = size / renderer._canvas.width;
+      renderer._canvas.set_scale(canvasScale, canvasScale);
+
+      let sizeIndex = extension.running_indicator_size || 0;
+      let style = running_indicator_style || 'default';
+      if (this._bandStyle !== style || this._bandSize !== sizeIndex) {
+        this._bandStyle = style;
+        this._bandSize = sizeIndex;
+        this._band = indicatorBand(style, sizeIndex, renderer._canvas.width);
+      }
+      let shift = indicatorShift(
+        size,
+        icon._contentFill,
+        this._band.top,
+        renderer._canvas.width,
+        Math.max(1, size * INDICATOR_GAP)
+      );
+      let [ox, oy] = outward(position);
+      renderer.translationX = ox * shift;
+      renderer.translationY = oy * shift;
+
       let running_indicator_color =
         extension.contrast_colors?.indicator ?? extension.running_indicator_color;
 
       renderer.set_state({
         count: appCount,
         color: running_indicator_color || [1, 1, 1, 1],
-        style: running_indicator_style || 'default',
-        size: extension.running_indicator_size || 0,
+        style,
+        size: sizeIndex,
         rotate: vertical
           ? position == DockPosition.RIGHT
             ? -90

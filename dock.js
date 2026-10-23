@@ -133,7 +133,10 @@ export let Dock = GObject.registerClass(
 
       this.renderArea = new St.Widget({
         name: 'DockRenderArea',
-        offscreen_redirect: Clutter.OffscreenRedirect.ALWAYS,
+        // group-composited only while the dock fades: an always-on redirect
+        // resamples every already scaled icon a second time on the way
+        // to the stage
+        offscreen_redirect: Clutter.OffscreenRedirect.AUTOMATIC_FOR_OPACITY,
         reactive: false,
         track_hover: false,
       });
