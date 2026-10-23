@@ -1,5 +1,6 @@
 'use strict';
 
+import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
 
 import { DockPosition } from './dock.js';
@@ -8,9 +9,13 @@ import {
   get_distance,
   isOverlapRect,
 } from './utils.js';
+import { RevealDwell } from './revealDwell.js';
 
 const DEBOUNCE_HIDE_TIMEOUT = 120;
 const PRESSURE_SENSE_DISTANCE = 40;
+// Pointer must rest ON the edge strip this long (ms) before the hidden dock
+// slides in; the reveal-delay-ms setting overrides it (0 = instant).
+const DEFAULT_REVEAL_DELAY_MS = 300;
 
 // some codes lifted from dash-to-dock intellihide
 // Dodge regular windows and their dialogs/tool palettes. DOCK, TOOLBAR, MENU
@@ -34,6 +39,16 @@ export let AutoHide = class {
     this._enabled = true;
     this._shown = true;
     this._dwell = 0;
+    this._revealDwell = new RevealDwell({
+      schedule: (fn, ms) =>
+        GLib.timeout_add(GLib.PRIORITY_DEFAULT, ms, () => {
+          fn();
+          return GLib.SOURCE_REMOVE;
+        }),
+      cancel: (id) => GLib.source_remove(id),
+      onReveal: () => this.show(),
+      pressureRequired: () => !!this.extension.pressure_sense,
+    });
     console.log('autohide enabled');
   }
 
@@ -41,6 +56,8 @@ export let AutoHide = class {
     // _debounceCheckHide() also runs while autohide is off, so always drop it
     this.extension._loTimer?.cancel(this._debounceCheckSeq);
     this._debounceCheckSeq = null;
+    // a pending edge dwell must not outlive the autohider
+    this._revealDwell?.cancel();
 
     if (!this._enabled) return;
     if (this.extension._hiTimer) {
@@ -63,6 +80,9 @@ export let AutoHide = class {
 
   _onMotionEvent() {
     if (this.extension.pressure_sense && !this._shown) {
+      // motion over the strip proves the pointer is on the edge: make sure a
+      // dwell is running even if the enter event was missed
+      this._revealDwell?.touch(this._revealDelayMs());
       let monitor = this.dock._monitor;
       let pointer = global.get_pointer();
       if (this.extension.simulated_pointer) {
@@ -123,20 +143,35 @@ export let AutoHide = class {
       // console.log(`${this._dwell} ${dwell_count} ${this.extension.pressure_sense_sensitivity}`);
 
       if (this._dwell > dwell_count) {
-        this.show();
+        // pressure alone is not enough: the dwell still has to elapse
+        this._revealDwell?.pressure();
       }
     }
   }
 
+  _revealDelayMs() {
+    return this.extension.reveal_delay_ms ?? DEFAULT_REVEAL_DELAY_MS;
+  }
+
+  // The pointer is ON the edge strip. Revealing needs it to stay there for
+  // reveal-delay-ms (and, with pressure sense, to push hard enough too);
+  // merely passing near the edge never reaches this strip.
   _onEnterEvent() {
-    if (!this.extension.pressure_sense) {
-      this.show();
+    if (!this._enabled || this._shown) {
+      // already shown (nothing to wait for) or autohide off (the pre-dwell
+      // immediate reveal stays, e.g. a dock left hidden by a refused show)
+      if (!this.extension.pressure_sense) this.show();
+      return;
     }
+    this._revealDwell?.enter(this._revealDelayMs());
   }
 
   _onLeaveEvent() {
+    this._revealDwell?.cancel();
+    // a push that did not end in a reveal must not count towards the next
+    // visit: pressure has to be reached within one visit's dwell
+    this._dwell = 0;
     if (this._shown) {
-      this._dwell = 0;
       this._debounceCheckHide();
     }
   }
@@ -150,6 +185,10 @@ export let AutoHide = class {
   }
 
   show() {
+    // every other reveal path is immediate and also settles a pending dwell;
+    // done before the guards so a refused reveal (fullscreen) cannot leave
+    // the dwell latched as already revealed
+    this._revealDwell?.cancel();
     if (!this.dock._monitor || this.dock._monitor.inFullscreen) {
       return;
     }

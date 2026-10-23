@@ -27,7 +27,7 @@ If you prefer strictly human-written code, feel free to skip this extension. If 
 * Dash docked at the desktop
 * Animated dock icons
 * Resize icons
-* Autohide/intellihide
+* Autohide/intellihide; the hidden dock needs the pointer resting on the screen edge for `reveal-delay-ms` (default 300 ms, 0-2000, 0 = instant; with pressure sense the push must also be reached)
 * Dock positions: bottom, top, left, right
 * Scroll wheel to cycle windows
 * Click to maximize/minimize windows

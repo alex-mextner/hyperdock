@@ -94,6 +94,13 @@ export const SettingsKeys = (patch) => {
       key_maps: {},
       test: { pointer: 'slide-down' },
     },
+    // milliseconds, 0..2000 (schema range). 'dropdown' is this mirror's int
+    // type (get_int/set_int); there is no prefs widget, set it via dconf.
+    'reveal-delay-ms': {
+      default_value: 300,
+      widget_type: 'dropdown',
+      test: { values: [0, 300, 1000] },
+    },
     'autohide-speed': {
       default_value: 0.5,
       widget_type: 'scale',

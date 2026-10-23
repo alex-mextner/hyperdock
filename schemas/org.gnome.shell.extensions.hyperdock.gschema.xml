@@ -81,6 +81,12 @@
         <summary>Pressure sense</summary>
         <description>Move pointer down to force dash visibility.</description>
     </key>
+    <key type="i" name="reveal-delay-ms">
+        <range min="0" max="2000"/>
+        <default>300</default>
+        <summary>Autohide reveal delay (ms)</summary>
+        <description>An autohidden dock slides in only after the pointer has rested ON the screen edge this many milliseconds; passing near the edge or leaving early does nothing. With pressure sense on, the push must also be reached. 0 reveals at once. Other reveal paths (window attention, file drags, the toggle shortcut) stay immediate.</description>
+    </key>
     <key type="d" name="autohide-speed">
         <default>0.5</default>
         <summary>Autohide speed</summary>
