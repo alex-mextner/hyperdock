@@ -1,87 +1,38 @@
 'use strict';
 
+// Dock layout scenarios (#1 #2 #11 #15) for the nested smoke shell, run by
+// probeScenarios.js (D2DA_PROBE=1, D2DA_PROBE_SCENARIO=layout,width, see
+// tools/smoke-shell.sh). `layout` sweeps a simulated pointer across the dock
+// and measures, on the real actors, the clearance between every separator and
+// the icons drawn next to it, then right-clicks with a virtual pointer
+// (separator slot, the icon beside it, Show Apps) and checks #11. `width`
+// adds and removes a favourite and watches the platter's width frame by frame.
+// `h` carries probeScenarios.js's helpers: check, say, sleep, shot,
+// closeOverview.
+
 import GLib from 'gi://GLib';
-import Gio from 'gi://Gio';
 import Clutter from 'gi://Clutter';
 import Shell from 'gi://Shell';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as Fav from 'resource:///org/gnome/shell/ui/appFavorites.js';
 import * as Compat from './compat.js';
 
-// Dock layout scenario (#1/#2/#11/#15), smoke only: D2DA_SMOKE_SCENARIO=layout
-// with D2DA_PROBE=1 and the in-memory backend, run once ~3 s after the first
-// enable. Sweeps a simulated pointer across the dock and measures, on the
-// real actors, the clearance between every separator and the icons drawn next
-// to it; checks the right-click hit areas; optionally (D2DA_SCENARIO_SHOTS=dir)
-// writes screenshots. Results: `d2da-scenario {json}` lines, `d2da-scenario FAIL`
-// on any violation (tools/smoke-shell.sh fails the run on it).
-export function startSmokeScenario(ext) {
-  GLib.timeout_add(GLib.PRIORITY_DEFAULT, 3000, () => {
-    layoutScenario(ext).catch((e) => {
-      console.log(`d2da-scenario FAIL scenario threw: ${e} ${e?.stack ?? ''}`);
-    });
-    return GLib.SOURCE_REMOVE;
-  });
-}
-
-const nextFrame = () =>
-  new Promise((resolve) =>
-    GLib.timeout_add(GLib.PRIORITY_DEFAULT, 24, () => {
-      resolve();
-      return GLib.SOURCE_REMOVE;
-    })
-  );
-
-async function shoot(dir, name, dock) {
-  if (!dir) return;
-  try {
-    const m = dock.getMonitor();
-    const strip = 300;
-    const vertical = dock.isVertical();
-    const width = vertical ? strip : Math.min(m.width, 1200);
-    const height = vertical ? Math.min(m.height, 800) : strip;
-    const x = dock._position === 'right' ? m.x + m.width - strip : m.x;
-    const y = dock._position === 'bottom' ? m.y + m.height - strip : m.y;
-    const file = Gio.File.new_for_path(`${dir}/${name}.png`);
-    const stream = file.replace(null, false, Gio.FileCreateFlags.NONE, null);
-    const shot = new Shell.Screenshot();
-    await new Promise((resolve, reject) =>
-      shot.screenshot_area(x, y, width, height, stream, (o, res) => {
-        try {
-          o.screenshot_area_finish(res);
-          stream.close(null);
-          resolve();
-        } catch (e) {
-          reject(e);
-        }
-      })
-    );
-    console.log(`d2da-scenario {"shot":"${dir}/${name}.png"}`);
-  } catch (e) {
-    console.log(`d2da-scenario NOTE screenshot ${name} failed: ${e}`);
-  }
-}
-
-async function layoutScenario(ext) {
+export async function layoutScenario(ext, h) {
+  const S = 'layout';
+  const nextFrame = () => h.sleep(24);
+  let failures = 0;
+  const fail = (msg) => {
+    failures++;
+    h.check(S, msg, false);
+  };
   const dock = ext.docks?.[0];
   const layout = dock?.animator?.layout;
-  const fails = [];
-  const fail = (msg) => {
-    fails.push(msg);
-    console.log(`d2da-scenario FAIL ${msg}`);
-  };
-  if (GLib.getenv('D2DA_SMOKE_SCENARIO') === 'width') {
-    if (!dock) return fail('no dock to run the scenario on');
-    await addFavoriteWidth(dock, fail, GLib.getenv('D2DA_SCENARIO_SHOTS'));
-    console.log(
-      `d2da-scenario ${JSON.stringify({ scenario: 'width', done: true, failures: fails.length })}`
-    );
-    return;
-  }
   if (!dock || !layout) {
     return fail('no dock to run the scenario on');
   }
-  const shots = GLib.getenv('D2DA_SCENARIO_SHOTS');
+  await h.closeOverview();
+  // let the Dash populate and the dock draw its first frames
+  await h.sleep(1500);
   const vertical = dock.isVertical();
   const axis = vertical ? 1 : 0;
   const [dx, dy] = dock.dash.get_transformed_position();
@@ -105,7 +56,7 @@ async function layoutScenario(ext) {
   if (layout.sepCount === 0) {
     fail(`the dock has no separator to measure (${JSON.stringify(summary)})`);
   }
-  await shoot(shots, `${dock._position}-rest`, dock);
+  await h.shot(`${dock._position}-rest`);
 
   // 1. sweep: clearance between each separator and its neighbours' rects
   let samples = 0;
@@ -144,7 +95,7 @@ async function layoutScenario(ext) {
     }
     if (!shotTaken && p >= shotAt) {
       shotTaken = true;
-      await shoot(shots, `${dock._position}-magnified`, dock);
+      await h.shot(`${dock._position}-magnified`);
     }
   }
   ext.simulated_pointer = null;
@@ -152,12 +103,14 @@ async function layoutScenario(ext) {
     dock.animate(16);
     await nextFrame();
   }
-  console.log(
-    'd2da-scenario ' +
-      JSON.stringify({ ...summary, sweepSamples: samples, minClearancePx: Number(minClear.toFixed(3)), overlaps: bad })
+  h.check(
+    S,
+    'separators stay clear of the icons over the whole sweep',
+    bad === 0 && samples >= 50,
+    { ...summary, sweepSamples: samples, minClearancePx: Number(minClear.toFixed(3)), overlaps: bad }
   );
-  if (samples < 50) fail(`sweep measured only ${samples} separator samples`);
 
+  let phaseStart = failures;
   // 2. right-click hit areas through the real input path: a virtual pointer
   // moves and clicks; the whole slot (line and padding, across the dock)
   // opens the dock menu, the icons beside it keep their own menus
@@ -187,6 +140,9 @@ async function layoutScenario(ext) {
     const [w, h] = actor.get_transformed_size();
     return [x + w / 2, y + h / 2];
   };
+  // away from the dock, and from the hot corner a point beside a vertical
+  // dock's end would reach
+  const parkPointer = () => moveTo(global.stage.width / 2, global.stage.height / 2);
   // the dock magnifies under the pointer, so the slot moves: chase it
   const settleOnSlot = async (j, along = 0.5) => {
     for (let i = 0; i < 3; i++) {
@@ -219,7 +175,7 @@ async function layoutScenario(ext) {
       if (!menuOpen()) {
         fail(`slot ${j}: right-click ${Math.round(along * 100)}% across the slot did not open the dock menu`);
       }
-      if (along === 0.5) await shoot(shots, `${dock._position}-menu-slot`, dock);
+      if (along === 0.5) await h.shot(`${dock._position}-menu-slot`);
       await closeMenu();
     }
 
@@ -232,16 +188,18 @@ async function layoutScenario(ext) {
       if (menuOpen()) fail(`slot ${j}: right-click on the neighbouring app icon opened the dock menu`);
       const appMenu = neighbour._appwell._menu;
       if (!appMenu?.isOpen) fail(`slot ${j}: right-click on the neighbouring app icon did not open its own menu`);
-      await shoot(shots, `${dock._position}-menu-app`, dock);
+      await h.shot(`${dock._position}-menu-app`);
       appMenu?.close(false);
       await nextFrame();
     }
   }
 
+  h.check(S, '#15: right-click in every separator slot opens the dock menu, beside it does not, the neighbouring app icon keeps its own menu', failures === phaseStart);
+  phaseStart = failures;
   // 3. Show Apps: right-click is a menu, never the grid, never a launch
   if (Main.overview.visible) {
     Main.overview.hide();
-    await moveTo(...at(lo - 100));
+    await parkPointer();
   }
   const showApps = Compat.getDashShowAppsIcon(dock.dash);
   if (showApps?._icon && showApps.visible) {
@@ -261,7 +219,7 @@ async function layoutScenario(ext) {
       if (launched) fail('right-click on Show Apps launched an app');
       if (!menuOpen()) fail('right-click on Show Apps did not open a menu');
       else if (!dock.interactions._showAppsItem?.visible) fail('Show Apps menu has no Show Applications item');
-      await shoot(shots, `${dock._position}-menu-showapps`, dock);
+      await h.shot(`${dock._position}-menu-showapps`);
       await closeMenu();
 
       await moveTo(...centreOf(showApps._icon));
@@ -277,8 +235,10 @@ async function layoutScenario(ext) {
     fail('no Show Apps icon to test (apps-icon setting)');
   }
   // the pointer leaves the dock
-  await moveTo(...at(lo - 100));
+  await parkPointer();
+  h.check(S, '#15: Show Apps right-click opens a menu (no grid, no launch); left click opens the grid', failures === phaseStart);
 
+  phaseStart = failures;
   // 4. #11: frames in which the first, a middle and the last icon cannot be
   // measured must not throw (called without animate()'s catch)
   {
@@ -310,18 +270,24 @@ async function layoutScenario(ext) {
     }
     if (layout.iconCount !== icons.length) fail('#11: icons did not come back once measurable');
   }
+  h.check(S, '#11: frames with an unmeasurable first/middle/last icon do not throw', failures === phaseStart);
 
   // 5. #1: adding and removing a favourite animates the dock width
-  await addFavoriteWidth(dock, fail, shots);
+  await addFavoriteWidth(dock, S, h);
+}
 
-  console.log(
-    `d2da-scenario ${JSON.stringify({ scenario: 'layout', done: true, failures: fails.length })}`
-  );
+export async function widthScenario(ext, h) {
+  const dock = ext.docks?.[0];
+  if (!dock) return h.check('width', 'no dock to run the scenario on', false);
+  await h.closeOverview();
+  await h.sleep(1500);
+  await addFavoriteWidth(dock, 'width', h);
 }
 
 // #1: adding and removing a favourite must animate the dock width. Reads only
-// the platter, so it works on any build: D2DA_SMOKE_SCENARIO=width runs just this.
-async function addFavoriteWidth(dock, fail, shots) {
+// the platter, so it works on any build: the `width` scenario runs just this.
+async function addFavoriteWidth(dock, S, h) {
+  const nextFrame = () => h.sleep(24);
   const widthOf = () => (dock.isVertical() ? dock._background.height : dock._background.width);
   const sample = async (frames) => {
     const series = [widthOf()];
@@ -342,21 +308,22 @@ async function addFavoriteWidth(dock, fail, shots) {
       if (Math.abs(d) > 0.5) steps++;
       if (d * total < -0.5) wrongWay++;
     }
-    console.log(
-      'd2da-scenario ' +
-        JSON.stringify({
-          what,
-          from: Number(series[0].toFixed(1)),
-          to: Number(series[series.length - 1].toFixed(1)),
-          maxStepPx: Number(maxStep.toFixed(1)),
-          framesChanging: steps,
-          series: series.map((v) => Number(v.toFixed(1))),
-        })
+    h.check(
+      S,
+      `#1 ${what}: the dock width animates (no jump, no wrong-way frame)`,
+      Math.abs(total) >= 10 &&
+        maxStep <= 0.5 * Math.abs(total) &&
+        steps >= 4 &&
+        wrongWay === 0,
+      {
+        from: Number(series[0].toFixed(1)),
+        to: Number(series[series.length - 1].toFixed(1)),
+        maxStepPx: Number(maxStep.toFixed(1)),
+        framesChanging: steps,
+        wrongWayFrames: wrongWay,
+        series: series.map((v) => Number(v.toFixed(1))),
+      }
     );
-    if (Math.abs(total) < 10) fail(`#1: ${what}: the dock width barely changed (${total.toFixed(1)}px)`);
-    else if (maxStep > 0.5 * Math.abs(total)) fail(`#1: ${what}: width jumped ${maxStep.toFixed(1)}px of ${total.toFixed(1)}px in one frame`);
-    if (steps < 4) fail(`#1: ${what}: width changed over only ${steps} frames`);
-    if (wrongWay) fail(`#1: ${what}: width moved the wrong way in ${wrongWay} frames`);
   };
   const favorites = Fav.getAppFavorites();
   const have = favorites.getFavorites().map((a) => a.get_id());
@@ -364,13 +331,13 @@ async function addFavoriteWidth(dock, fail, shots) {
     .get_installed()
     .find((info) => info.should_show() && !have.includes(info.get_id()));
   if (!candidate) {
-    fail('#1: no installed app to add as a favourite');
+    h.check(S, '#1: an installed app to add as a favourite', false);
   } else {
     for (let i = 0; i < 40; i++) await nextFrame();
     await sample(5);
     favorites.addFavorite(candidate.get_id());
     judge('add favourite', await sample(60));
-    await shoot(shots, `${dock._position}-added`, dock);
+    await h.shot(`${dock._position}-added`);
     for (let i = 0; i < 20; i++) await nextFrame();
     favorites.removeFavorite(candidate.get_id());
     judge('remove favourite', await sample(60));

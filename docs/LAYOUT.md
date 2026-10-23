@@ -101,11 +101,11 @@ Right-click on Show Apps opens the same menu with a "Show Applications" item
 launch; only the primary button opens the grid.
 
 Checks: `tests/dock_layout_check.js` (pure; node and gjs) sweeps the scenario
-matrix. `D2DA_SMOKE_SCENARIO=layout tools/smoke-shell.sh 0` (with
-`D2DA_SMOKE_SETTINGS='trash-icon=true downloads-icon=true separator-thickness=3 background-menu=true'`)
-repeats the sweep on the real actors in the nested shell, clicks with a
-virtual pointer (slot, icon beside it, Show Apps) and adds/removes a
-favourite; `D2DA_SMOKE_SCENARIO=width` runs only the last part.
+matrix. `D2DA_PROBE=1 D2DA_PROBE_SCENARIO=layout tools/smoke-shell.sh 0` (with
+`D2DA_SMOKE_SETTINGS='trash-icon=true downloads-icon=true separator-thickness=3 background-menu=true'`,
+see `layoutScenarios.js`) repeats the sweep on the real actors in the nested
+shell, clicks with a virtual pointer (slot, icon beside it, Show Apps) and
+adds/removes a favourite; `D2DA_PROBE_SCENARIO=width` runs only the last part.
 
 ## Icons coming and going (the dock width animates)
 

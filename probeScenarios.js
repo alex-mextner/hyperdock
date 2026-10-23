@@ -13,6 +13,7 @@ import Shell from 'gi://Shell';
 import * as Fav from 'resource:///org/gnome/shell/ui/appFavorites.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as Compat from './compat.js';
+import { layoutScenario, widthScenario } from './layoutScenarios.js';
 
 const GOA_DAEMON = 'org.gnome.goa-daemon.desktop';
 const OA_PANEL = 'gnome-online-accounts-panel.desktop';
@@ -255,7 +256,14 @@ async function recents(ext) {
   if (launched) calculator.request_quit();
 }
 
-const SCENARIOS = { recents };
+// what the scenarios of other modules (layoutScenarios.js) record with
+const helpers = { check, say, sleep, shot, closeOverview };
+
+const SCENARIOS = {
+  recents,
+  layout: (ext) => layoutScenario(ext, helpers),
+  width: (ext) => widthScenario(ext, helpers),
+};
 
 // Called by probe() after the first enable
 export function startScenarios(ext) {

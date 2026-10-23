@@ -25,22 +25,22 @@
 #   D2DA_SMOKE_SETTINGS  'key=value key=value' (GVariant text, strings quoted)
 #                        applied by probe.js on every enable. Isolated mode
 #                        with D2DA_PROBE=1 only; ignored with real dconf.
-#   D2DA_SMOKE_SCENARIO  layout | width: probe.js drives the real dock (pointer
-#                        sweep over separators, right-clicks, adding and
-#                        removing a favourite) ~3 s after enable and logs
-#                        `d2da-scenario` lines; any FAIL fails the run. Isolated
-#                        mode with D2DA_PROBE=1; use 0 toggles. D2DA_SCENARIO_SHOTS=dir
-#                        also writes screenshots. Pair it with D2DA_SMOKE_SETTINGS
-#                        'trash-icon=true downloads-icon=true separator-thickness=3 background-menu=true'.
 #   D2DA_SMOKE_STRICT_LEAKS=1  also fail if any after-disable probe delta != 0
 #                        (stage delta excluded due to run-to-run noise outside the extension),
 #                        if probe line counts != TOGGLES+1/TOGGLES, or if
 #                        shutdown criticals > 0
-#   D2DA_PROBE_SCENARIO  'recents': scripted checks run inside the
+#   D2DA_PROBE_SCENARIO  'recents', 'layout', 'width' (comma separated):
+#                        scripted checks run inside the
 #                        shell by probeScenarios.js (isolated mode,
 #                        D2DA_PROBE=1); every "ok":false fails the run. The
 #                        run waits for them (D2DA_SMOKE_SCENARIO_TIMEOUT, 300 s):
 #                        use 0 toggles, they run after the first enable.
+#                        layout/width (layoutScenarios.js) drive the real dock:
+#                        pointer sweep over the separators, right-clicks with a
+#                        virtual pointer, adding/removing a favourite; pair them
+#                        with D2DA_SMOKE_SETTINGS='trash-icon=true
+#                        downloads-icon=true separator-thickness=3
+#                        background-menu=true' (dock-location=0..3 per position)
 #   D2DA_PROBE_SHOTS     directory for PNG screenshots the scenarios take
 #
 # Shutdown criticals: CRITICAL lines the shell logs after the stop marker
@@ -197,28 +197,6 @@ alive() {
 	[ -r "/proc/$1/status" ] && ! grep -q '^State:[[:space:]]*Z' "/proc/$1/status"
 }
 alive "$SHELL_PID" || { echo "FAIL: gnome-shell died"; RESULT=1; }
-
-# D2DA_SMOKE_SCENARIO=layout (with D2DA_PROBE=1, isolated mode; run with 0
-# toggles): probe.js drives a pointer sweep and right-clicks on the real
-# dock ~3 s after enable and logs `d2da-scenario` lines; any FAIL fails the run.
-if [ -n "$D2DA_SMOKE_SCENARIO" ]; then
-	i=0
-	until grep -q 'd2da-scenario .*"done":true' "$LOG" ||
-		grep -q 'd2da-scenario FAIL scenario threw' "$LOG"; do
-		i=$((i + 1))
-		if [ $i -gt 160 ]; then
-			echo "FAIL: scenario $D2DA_SMOKE_SCENARIO did not finish"
-			RESULT=1
-			break
-		fi
-		sleep 0.5
-	done
-	grep 'd2da-scenario' "$LOG" | sed 's/^.*d2da-scenario/  scenario:/'
-	if grep -q 'd2da-scenario FAIL' "$LOG"; then
-		echo "FAIL: scenario $D2DA_SMOKE_SCENARIO reported violations"
-		RESULT=1
-	fi
-fi
 
 # Stop the shell before reading the log so shutdown output is included.
 # (cleanup's real-dconf re-enable needs the shell alive: do it now)

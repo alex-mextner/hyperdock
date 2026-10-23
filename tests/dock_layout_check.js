@@ -842,6 +842,8 @@ function legacyDeltas({ restStarts, restSize, sf, spacing, magnify, pointer }) {
 
 check(NUM_GHOSTS === 4, 'ghost count is the one the old animator used');
 out(`${passes} checks passed, ${failures} failed`);
+// tools/run-tests.sh looks for this line
+if (!failures) out(`all passed (${passes} checks)`);
 if (IN_NODE) {
   process.exit(failures ? 1 : 0);
 } else {
