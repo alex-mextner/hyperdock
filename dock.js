@@ -1257,10 +1257,23 @@ export let Dock = GObject.registerClass(
         if (_draggable && !_draggable._dragBeginId) {
           _draggable._dragBeginId = _draggable.connect('drag-begin', () => {
             this._dragging = true;
-            this._dragged = icon;
-            this.interactions?.beginIconDrag(c.child.app);
+            // With magnification the icon under the pointer is not the dash
+            // slot the Shell's drag gesture sits on (the Dash is invisible and
+            // unmagnified): drag the icon that is seen, as clicks do
+            let seen = this.animated ? this._hoveredIcon : null;
+            let source = seen?.child?.app ? seen : c;
+            if (source !== c) {
+              c._d2daUndoRetarget = Compat.retargetDrag(
+                _draggable,
+                source.child
+              );
+            }
+            this._dragged = source._icon;
+            this.interactions?.beginIconDrag(source.child.app);
           });
           _draggable._dragEndId = _draggable.connect('drag-end', () => {
+            c._d2daUndoRetarget?.();
+            c._d2daUndoRetarget = null;
             this.interactions?.endIconDrag();
             this._dragging = false;
             this._icons = null;

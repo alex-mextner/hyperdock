@@ -1,8 +1,8 @@
 'use strict';
 
 // macOS dock interactions that GNOME's Dash lacks, one instance per Dock:
-//  - drag-off-remove: drag a pinned icon away from the dock to unpin it
-//    ("Remove" label near the pointer, poof on drop);
+//  - drag-off-remove: drag a pinned or recent icon off the dock and hold it
+//    there to unpin it ("Remove" label near the pointer, poof on drop);
 //  - background-menu: right-click on the dock background/separator opens
 //    Hiding / Magnification / Position / Dock Settings;
 //  - spring-loading: a file drag hovering over an app icon for ~1 s brings
@@ -15,6 +15,7 @@ import * as DND from 'resource:///org/gnome/shell/ui/dnd.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import * as Fav from 'resource:///org/gnome/shell/ui/appFavorites.js';
 import { gettext as _ } from 'resource:///org/gnome/shell/extensions/extension.js';
+import { DragOffGesture, HOLD_MS, isOutside, removalKind } from './dragOff.js';
 
 import Clutter from 'gi://Clutter';
 import Graphene from 'gi://Graphene';
@@ -27,6 +28,9 @@ const SPRING_DELAY_MS = 1000;
 const POOF_PUFFS = 6;
 const POOF_MS = 320;
 const POOF_SPREAD = 28;
+// the dock zone reaches this far (times the dock's thickness) beyond the dock
+const ZONE_MARGIN = 0.5;
+const REMOVE_OPACITY = 110;
 
 // dock-location values, in the order of the prefs dropdown
 const LOCATION = { BOTTOM: 0, LEFT: 1, RIGHT: 2, TOP: 3 };
@@ -46,10 +50,26 @@ export class DockInteractions {
     };
 
     this._dragApp = null;
+    this._removal = null;
     this._dragActor = null;
-    this._inRemoveZone = false;
     this._rect = [0, 0, 0, 0];
     this._margin = 0;
+    // pointer outside the dock for HOLD_MS arms "Remove"; the timer lives
+    // only while a drag is held outside
+    this._gesture = new DragOffGesture({
+      schedule: (fn, ms) =>
+        GLib.timeout_add(GLib.PRIORITY_DEFAULT, ms, () => {
+          try {
+            fn();
+          } catch (e) {
+            console.error('d2da: drag-off hold', e);
+          }
+          return GLib.SOURCE_REMOVE;
+        }),
+      cancel: (id) => GLib.source_remove(id),
+      onArm: () => this._showRemove(true),
+      onDisarm: () => this._showRemove(false),
+    });
 
     this._springApp = null;
     this._springId = 0;
@@ -84,18 +104,14 @@ export class DockInteractions {
   //---------------------------
 
   beginIconDrag(app) {
-    // the overview has its own drop targets (workspaces launch the app)
-    if (
-      !this.extension.drag_off_remove ||
-      !app ||
-      Main.overview.visible ||
-      !(
-        Fav.getAppFavorites().isFavorite(app.get_id()) ||
-        this.extension.recentDockApps().includes(app)
-      )
-    ) {
-      return;
-    }
+    let kind = removalKind({
+      enabled: this.extension.drag_off_remove,
+      // the overview has its own drop targets (workspaces launch the app)
+      overviewOpen: Main.overview.visible,
+      pinned: !!app && Fav.getAppFavorites().isFavorite(app.get_id()),
+      recent: !!app && this.extension.recentDockApps().includes(app),
+    });
+    if (!kind) return;
     // the dock does not move during a drag: measure it once
     let struts = this.dock.struts;
     let [x, y] = struts.get_transformed_position();
@@ -103,19 +119,22 @@ export class DockInteractions {
     this._rect[1] = y;
     this._rect[2] = struts.width;
     this._rect[3] = struts.height;
-    // "more than ~1 icon height away": the dock's own thickness
-    this._margin = this.dock.isVertical() ? struts.width : struts.height;
+    this._margin =
+      (this.dock.isVertical() ? struts.width : struts.height) * ZONE_MARGIN;
     this._dragApp = app;
-    this._inRemoveZone = false;
+    this._removal = kind;
+    this._gesture.begin();
     DND.addDragMonitor(this._dragOffMonitor);
   }
 
   endIconDrag() {
+    this._gesture.end();
     if (!this._dragApp) return;
     DND.removeDragMonitor(this._dragOffMonitor);
-    this._setRemoveZone(false);
-    this._dragApp = null;
+    this._dragActor?.disconnectObject(this);
     this._dragActor = null;
+    this._dragApp = null;
+    this._removal = null;
   }
 
   _ensureRemoveLabel() {
@@ -130,50 +149,66 @@ export class DockInteractions {
     return this._removeLabel;
   }
 
-  _setRemoveZone(inZone) {
-    if (this._inRemoveZone === inZone) return;
-    this._inRemoveZone = inZone;
-    if (this._removeLabel) this._removeLabel.visible = inZone;
-    if (this._dragActor) this._dragActor.opacity = inZone ? 110 : 255;
+  // The "Remove" state: label by the pointer, translucent icon. The hold
+  // timer arms it with the pointer at rest, so the label is placed from the
+  // pointer itself; later motion moves it along.
+  _showRemove(on) {
+    if (on) {
+      let label = this._ensureRemoveLabel();
+      label.visible = true;
+      Main.uiGroup.set_child_above_sibling(label, null);
+      let [x, y] = global.get_pointer();
+      this._placeRemoveLabel(x, y);
+    } else if (this._removeLabel) {
+      this._removeLabel.visible = false;
+    }
+    if (this._dragActor) this._dragActor.opacity = on ? REMOVE_OPACITY : 255;
+  }
+
+  _placeRemoveLabel(x, y) {
+    this._removeLabel.set_position(x + 14, y - this._removeLabel.height - 14);
   }
 
   _onDragOffMotion(dragEvent) {
-    let r = this._rect;
-    let m = this._margin;
+    if (this._dragActor !== dragEvent.dragActor) {
+      this._dragActor?.disconnectObject(this);
+      this._dragActor = dragEvent.dragActor;
+      // DND destroys the clone after a cancelled drag's snap-back, which is
+      // before drag-end
+      this._dragActor.connectObject(
+        'destroy',
+        () => {
+          this._dragActor = null;
+        },
+        this
+      );
+    }
     let x = dragEvent.x;
     let y = dragEvent.y;
-    let out =
-      x < r[0] - m || x > r[0] + r[2] + m || y < r[1] - m || y > r[1] + r[3] + m;
-    this._dragActor = dragEvent.dragActor;
-    if (out) {
-      let label = this._ensureRemoveLabel();
-      this._setRemoveZone(true);
-      Main.uiGroup.set_child_above_sibling(label, null);
-      label.set_position(x + 14, y - label.height - 14);
-    } else {
-      this._setRemoveZone(false);
-    }
+    this._gesture.move(isOutside(this._rect, this._margin, x, y), HOLD_MS);
+    if (this._removeLabel?.visible) this._placeRemoveLabel(x, y);
     return DND.DragMotionResult.CONTINUE;
   }
 
   _onDragOffDrop(dropEvent) {
-    if (!this._inRemoveZone || !this._dragApp) {
+    if (!this._dragApp) return DND.DragDropResult.CONTINUE;
+    // where the button was released, not where the last motion event was
+    // handled: DND samples motion on idle
+    let [x, y] = dropEvent.clutterEvent.get_coords();
+    if (!this._gesture.drop(isOutside(this._rect, this._margin, x, y))) {
       return DND.DragDropResult.CONTINUE;
     }
     let id = this._dragApp.get_id();
-    let pinned = Fav.getAppFavorites().isFavorite(id);
+    let unpin = this._removal === 'unpin';
     let extension = this.extension;
-    let [x, y] = global.get_pointer();
     // the drop is then cancelled by DND; hiding the actor turns the
     // snap-back into an invisible no-op instead of a fly-home
     dropEvent.dropActor?.hide();
-    // DND destroys the clone after the snap-back, before drag-end
-    this._dragActor = null;
     this._poof(x, y);
     // like Shell's Show Apps drop: unpin after the drop has been processed,
     // so the dash does not rebuild under the running drag code
     global.compositor.get_laters().add(Meta.LaterType.BEFORE_REDRAW, () => {
-      if (pinned) {
+      if (unpin) {
         Fav.getAppFavorites().removeFavorite(id);
       } else {
         extension.forgetRecentApp(id);
