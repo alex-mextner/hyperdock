@@ -48,7 +48,7 @@
         <child>
           <object class="AdwActionRow">
             <property name="title" translatable="yes">Recent Apps</property>
-            <property name="subtitle" translatable="yes">Show recently closed apps that are not pinned after the running apps, as macOS "Show suggested and recent apps in Dock".</property>
+            <property name="subtitle" translatable="yes">Show recently closed apps that are not pinned in their own section after the running apps, as macOS "Show suggested and recent apps in Dock". Remove one with right-click, Remove from Dock.</property>
             <property name="activatable-widget">recent-apps-count</property>
             <child>
               <object class="GtkDropDown" id="recent-apps-count">
@@ -85,7 +85,7 @@
         <child>
           <object class="AdwActionRow">
             <property name="title" translatable="yes">Drag Off to Remove</property>
-            <property name="subtitle" translatable="yes">Drag a pinned icon away from the dock and drop it to unpin the app, as on macOS.</property>
+            <property name="subtitle" translatable="yes">Drag a pinned or recent icon away from the dock and drop it to remove it, as on macOS.</property>
             <property name="activatable-widget">drag-off-remove</property>
             <child>
               <object class="GtkSwitch" id="drag-off-remove">

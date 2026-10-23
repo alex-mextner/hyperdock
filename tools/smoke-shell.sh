@@ -29,6 +29,12 @@
 #                        (stage delta excluded due to run-to-run noise outside the extension),
 #                        if probe line counts != TOGGLES+1/TOGGLES, or if
 #                        shutdown criticals > 0
+#   D2DA_PROBE_SCENARIO  'recents': scripted checks run inside the
+#                        shell by probeScenarios.js (isolated mode,
+#                        D2DA_PROBE=1); every "ok":false fails the run. The
+#                        run waits for them (D2DA_SMOKE_SCENARIO_TIMEOUT, 300 s):
+#                        use 0 toggles, they run after the first enable.
+#   D2DA_PROBE_SHOTS     directory for PNG screenshots the scenarios take
 #
 # Shutdown criticals: CRITICAL lines the shell logs after the stop marker
 # (e.g. Gjs "sweeping phase of GC" from leaked actors). Their count is
@@ -149,6 +155,22 @@ S=$(state)
 echo "initial state: $S"
 [ "$S" = "ACTIVE" ] || { echo "FAIL: extension not ACTIVE after startup"; RESULT=1; }
 
+# probeScenarios.js runs after the first enable; wait until each one has
+# logged its "done" (D2DA_SMOKE_SCENARIO_TIMEOUT seconds at most)
+if [ -n "$D2DA_PROBE_SCENARIO" ] && [ "$PROBE" = "1" ] && [ "$BACKEND" = "memory" ]; then
+	WANT=$(echo "$D2DA_PROBE_SCENARIO" | tr ',' '\n' | grep -c .)
+	i=0
+	while [ "$(grep -c 'd2da-probe-scenario .*"done":true' "$LOG")" -lt "$WANT" ]; do
+		if [ $i -ge "${D2DA_SMOKE_SCENARIO_TIMEOUT:-300}" ]; then
+			echo "FAIL: probe scenarios did not finish in time"
+			RESULT=1
+			break
+		fi
+		sleep 1
+		i=$((i + 1))
+	done
+fi
+
 n=1
 while [ $n -le "$TOGGLES" ]; do
 	wait_toggle disable NOT_ACTIVE "$n"
@@ -260,6 +282,17 @@ if [ "$PROBE" = "1" ]; then
 		else
 			echo "note: probe deltas != 0 (leaks expected until Phase 2; not failing)"
 		fi
+	fi
+fi
+
+# probeScenarios.js checks (D2DA_PROBE_SCENARIO): print them, fail on any miss
+SCENARIO_LINES=$(sed -n 's/.*d2da-probe-scenario //p' "$LOG")
+if [ -n "$SCENARIO_LINES" ]; then
+	echo "probe scenarios:"
+	echo "$SCENARIO_LINES" | sed 's/^/    /'
+	if echo "$SCENARIO_LINES" | grep -q '"ok":false'; then
+		echo "FAIL: a probe scenario check failed"
+		RESULT=1
 	fi
 fi
 

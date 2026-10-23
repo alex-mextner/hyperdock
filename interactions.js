@@ -89,7 +89,10 @@ export class DockInteractions {
       !this.extension.drag_off_remove ||
       !app ||
       Main.overview.visible ||
-      !Fav.getAppFavorites().isFavorite(app.get_id())
+      !(
+        Fav.getAppFavorites().isFavorite(app.get_id()) ||
+        this.extension.recentDockApps().includes(app)
+      )
     ) {
       return;
     }
@@ -158,6 +161,8 @@ export class DockInteractions {
       return DND.DragDropResult.CONTINUE;
     }
     let id = this._dragApp.get_id();
+    let pinned = Fav.getAppFavorites().isFavorite(id);
+    let extension = this.extension;
     let [x, y] = global.get_pointer();
     // the drop is then cancelled by DND; hiding the actor turns the
     // snap-back into an invisible no-op instead of a fly-home
@@ -168,7 +173,11 @@ export class DockInteractions {
     // like Shell's Show Apps drop: unpin after the drop has been processed,
     // so the dash does not rebuild under the running drag code
     global.compositor.get_laters().add(Meta.LaterType.BEFORE_REDRAW, () => {
-      Fav.getAppFavorites().removeFavorite(id);
+      if (pinned) {
+        Fav.getAppFavorites().removeFavorite(id);
+      } else {
+        extension.forgetRecentApp(id);
+      }
       return GLib.SOURCE_REMOVE;
     });
     console.log(`d2da: drag-off removed ${id}`);

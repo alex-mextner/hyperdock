@@ -2,6 +2,7 @@
 
 import GLib from 'gi://GLib';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import { startScenarios, stopScenarios } from './probeScenarios.js';
 
 // Live instance counts (T-6): stage walks can't see actors that were
 // unparented but never destroyed. Always counted; it's just an integer map.
@@ -58,6 +59,12 @@ export function applySmokeSettings(settings) {
 export function probe(ext, phase, timers) {
   if (GLib.getenv('D2DA_PROBE') !== '1') {
     return;
+  }
+
+  if (phase === 'after-enable') {
+    startScenarios(ext);
+  } else if (phase === 'after-disable') {
+    stopScenarios();
   }
 
   try {
