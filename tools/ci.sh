@@ -98,6 +98,17 @@ stage_shell() {
 }
 
 stage_actionlint() {
+	# actionlint runs shellcheck over `run:` blocks when it finds one on PATH (the CI runner
+	# has it); put a uv-provided one there so a local run reports the same.
+	if ! command -v shellcheck >/dev/null 2>&1 && command -v uv >/dev/null 2>&1; then
+		shim=$(mktemp -d)
+		printf '#!/bin/sh\nexec uv tool run --from shellcheck-py shellcheck "$@"\n' >"$shim/shellcheck"
+		chmod +x "$shim/shellcheck"
+		PATH="$shim:$PATH" run_tool actionlint actionlint-py -color
+		status=$?
+		rm -rf "$shim"
+		return $status
+	fi
 	run_tool actionlint actionlint-py -color
 }
 

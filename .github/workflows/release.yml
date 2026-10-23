@@ -40,19 +40,16 @@ jobs:
       - name: Install zip
         run: sudo apt-get install -y -qq zip
 
-      - name: Build the zips
+      - name: Build the zips, release.json and SHA256SUMS
         run: |
           set -eu
           tools/publish.sh "${GITHUB_REF_NAME#v}"
-          python3 tools/check-package.py --zip "$(ls ./*@*.zip | head -n1)"
-
-      - name: Write release.json and SHA256SUMS
-        run: |
-          set -eu
-          ext_zip=$(ls ./*@*.zip | head -n1)
-          other_zips=$(ls ./*.zip | grep -v -F "$ext_zip" || true)
-          # shellcheck disable=SC2086
-          python3 tools/release_manifest.py manifest "$GITHUB_REF_NAME" "$ext_zip" $other_zips
+          uuid=$(python3 -c "import json; print(json.load(open('metadata.json'))['uuid'])")
+          ext_zip="./${uuid}.zip"
+          python3 tools/check-package.py --zip "$ext_zip"
+          others=$(find . -maxdepth 1 -name '*.zip' ! -name "${uuid}.zip" -print)
+          # shellcheck disable=SC2086  # zip names have no spaces
+          python3 tools/release_manifest.py manifest "$GITHUB_REF_NAME" "$ext_zip" $others
 
       - name: Create the GitHub Release
         env:
