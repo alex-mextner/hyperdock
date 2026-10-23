@@ -344,7 +344,7 @@ export default class Preferences extends ExtensionPreferences {
             themed_presets.push(json);
           }
         } catch (err) {
-          console.error(`d2da: invalid preset ${fn.get_path()}`, err);
+          console.error('d2da: invalid preset', fn.get_path(), err);
         }
       }
       f = iter.next_file(null);
@@ -444,7 +444,7 @@ export default class Preferences extends ExtensionPreferences {
             break;
         }
       } catch (err) {
-        console.error(`d2da: preset ${p['meta']['title']} key ${k}`, err);
+        console.error('d2da: preset', p['meta']['title'], 'key', k, err);
       }
     });
 

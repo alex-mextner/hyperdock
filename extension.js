@@ -700,7 +700,7 @@ export default class Dash2DockLiteExt extends Extension {
             try {
               command();
             } catch (err) {
-              console.error(`d2da: msg-to-ext ${value}`, err);
+              console.error('d2da: msg-to-ext', value, err);
             }
           } else {
             console.warn('d2da: unknown command', value);
@@ -824,7 +824,7 @@ export default class Dash2DockLiteExt extends Extension {
         try {
           handlers[action]?.();
         } catch (err) {
-          console.error(`d2da: reaction ${action}`, err);
+          console.error('d2da: reaction', action, err);
         }
       }
     }

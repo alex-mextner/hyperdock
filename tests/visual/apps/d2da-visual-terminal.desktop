@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Terminal
+Exec=true
+Icon=@ICONDIR@/terminal.svg
+Terminal=false

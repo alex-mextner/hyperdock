@@ -68,7 +68,7 @@ class ServiceCounter {
         try {
           this._callback();
         } catch (e) {
-          console.error(`d2da: service ${this.name} update`, e);
+          console.error('d2da: service', this.name, 'update', e);
         }
       }
       return true;
@@ -257,7 +257,7 @@ export const Services = class {
         );
         return true;
       } catch (e) {
-        console.warn(`d2da: folder stack ${stack.path} skipped`, e);
+        console.warn('d2da: folder stack', stack.path, 'skipped', e);
         return false;
       }
     });
@@ -355,7 +355,7 @@ export const Services = class {
       try {
         s.update(elapsed);
       } catch (e) {
-        console.error(`d2da: service ${s.name} update`, e);
+        console.error('d2da: service', s.name, 'update', e);
       }
     });
   }
