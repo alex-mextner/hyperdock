@@ -11,6 +11,8 @@ import Graphene from 'gi://Graphene';
 
 import { Clock } from './apps/clock.js';
 import { Calendar } from './apps/calendar.js';
+import { MidnightTicker } from './widgetApps.js';
+import { detectWidgetApp } from './widgetAppsGio.js';
 import { GlassTrash } from './apps/trash.js';
 import { LauncherEntries } from './launcherEntry.js';
 import Shell from 'gi://Shell';
@@ -97,16 +99,6 @@ export const Services = class {
         -1
       ),
       new ServiceCounter(
-        'calendar',
-        1000 * 60 * 15,
-        () => {
-          this.extension.docks.forEach((d) => {
-            d._onCalendar();
-          });
-        },
-        -1
-      ),
-      new ServiceCounter(
         'ping',
         1000 * 5,
         () => {
@@ -117,6 +109,9 @@ export const Services = class {
         0
       ),
     ];
+
+    this._startCalendarTicker();
+    this.refreshWidgetApps();
 
     this._deferredMounts = [];
     this._volumeMonitor = Gio.VolumeMonitor.get();
@@ -166,6 +161,8 @@ export const Services = class {
   }
 
   disable() {
+    this._stopCalendarTicker();
+    this._widgetApps = null;
     this._unwatchNotifications();
     this._appNotices = {};
     this._launcherEntries?.destroy();
@@ -189,6 +186,78 @@ export const Services = class {
     this._mounts = {};
     this.trashApp = null;
     this.mountApps = {};
+  }
+
+  // The apps the live Calendar and Clock icons draw over: the dock item is
+  // matched by app id, not by icon name, so a handler such as Thunderbird (no
+  // Calendar app installed) works too. Detected on enable and whenever the
+  // installed apps change; the per-frame path only compares ids.
+  refreshWidgetApps() {
+    this._widgetApps = {
+      calendar: detectWidgetApp('calendar'),
+      clock: detectWidgetApp('clock'),
+    };
+  }
+
+  widgetApp(kind) {
+    return this._widgetApps?.[kind] ?? null;
+  }
+
+  // The date must change within a minute of midnight, so no polling: one
+  // timer aimed at the next midnight, re-aimed on resume from suspend and on
+  // timezone changes (the monotonic clock behind GLib timers stops while
+  // suspended, so the pending timer is stale after resume). A manual clock
+  // jump (timedatectl set-time) fires no property change: the date is then
+  // right again at the next midnight redraw.
+  _startCalendarTicker() {
+    this._stopCalendarTicker();
+    const redraw = () => this.extension.docks.forEach((d) => d._onCalendar());
+    this._calendarTicker = new MidnightTicker({
+      schedule: (fn, ms) =>
+        GLib.timeout_add(GLib.PRIORITY_DEFAULT, ms, () => {
+          fn();
+          return GLib.SOURCE_REMOVE;
+        }),
+      cancel: (id) => GLib.source_remove(id),
+      now: () => new Date(),
+      onMidnight: redraw,
+    });
+    this._calendarTicker.start();
+
+    const rearm = () => this._calendarTicker?.rearm();
+    const bus = Gio.DBus.system;
+    this._dateSubs = [
+      bus.signal_subscribe(
+        'org.freedesktop.login1',
+        'org.freedesktop.login1.Manager',
+        'PrepareForSleep',
+        '/org/freedesktop/login1',
+        null,
+        Gio.DBusSignalFlags.NONE,
+        (conn, sender, path, iface, signal, params) => {
+          // true = going to sleep; only the wake-up matters
+          if (!params.deepUnpack()[0]) rearm();
+        }
+      ),
+      bus.signal_subscribe(
+        'org.freedesktop.timedate1',
+        'org.freedesktop.DBus.Properties',
+        'PropertiesChanged',
+        '/org/freedesktop/timedate1',
+        null,
+        Gio.DBusSignalFlags.NONE,
+        rearm
+      ),
+    ];
+  }
+
+  _stopCalendarTicker() {
+    this._calendarTicker?.stop();
+    this._calendarTicker = null;
+    if (this._dateSubs) {
+      this._dateSubs.forEach((id) => Gio.DBus.system.signal_unsubscribe(id));
+      this._dateSubs = null;
+    }
   }
 
   // Folders shown as stacks right of the apps, macOS style: Downloads plus the
@@ -1026,8 +1095,10 @@ export const Services = class {
       }
     }
 
+    let appId = item._appwell?.app?.get_id();
+
     // clock
-    if (icon.icon_name == 'org.gnome.clocks') {
+    if (appId && appId === this._widgetApps?.clock?.id) {
       if (this.extension.clock_icon) {
         let clock = item._clock;
         if (!clock) {
@@ -1064,10 +1135,12 @@ export const Services = class {
         item._icon.visible = true;
         clock?.hide();
       }
+    } else if (item._clock) {
+      this._dropWidget(item, '_clock');
     }
 
-    // calender
-    if (icon.icon_name == 'org.gnome.Calendar') {
+    // calendar
+    if (appId && appId === this._widgetApps?.calendar?.id) {
       if (this.extension.calendar_icon) {
         let calendar = item._calendar;
         if (!calendar) {
@@ -1101,6 +1174,15 @@ export const Services = class {
         item._icon.visible = true;
         calendar?.hide();
       }
+    } else if (item._calendar) {
+      this._dropWidget(item, '_calendar');
     }
+  }
+
+  // the item no longer shows the app its live widget was drawn over (another
+  // app was detected, e.g. Calendar got installed over a handler fallback)
+  _dropWidget(item, key) {
+    item[key].destroy();
+    item._icon.visible = true;
   }
 };

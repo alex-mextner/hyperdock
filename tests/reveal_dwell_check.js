@@ -200,6 +200,28 @@ test('pressure sense switched off mid-dwell releases the waiting reveal', () => 
   assert.equal(h.log.reveals, 1, 'stuck waiting for a pressure that never comes');
 });
 
+test('pressure sense switched off after the dwell elapsed reveals on recheck', () => {
+  const h = harness(true);
+  h.dwell.enter(300);
+  h.advance(300);
+  assert.equal(h.log.reveals, 0, 'dwell done but pressure still required');
+  h.state.pressure = false;
+  h.dwell.recheck();
+  assert.equal(h.log.reveals, 1, 'dock stays hidden until the pointer re-enters');
+  h.dwell.recheck();
+  assert.equal(h.log.reveals, 1, 'recheck never reveals twice');
+});
+
+test('recheck off the strip or before the dwell elapsed does nothing', () => {
+  const h = harness(false);
+  h.dwell.recheck();
+  assert.equal(h.log.reveals, 0);
+  h.dwell.enter(300);
+  h.advance(100);
+  h.dwell.recheck();
+  assert.equal(h.log.reveals, 0);
+});
+
 test('revealing from inside onReveal may cancel without a double reveal', () => {
   let reveals = 0;
   const timers = new Map();

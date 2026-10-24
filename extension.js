@@ -40,6 +40,7 @@ import { WindowFeedback } from './windowFeedback.js';
 import { runTests } from './diagnostics.js';
 import { probe, applySmokeSettings, smokeShots } from './probe.js';
 import * as Compat from './compat.js';
+import { decidePin } from './widgetApps.js';
 import { WallpaperTone, markColors } from './contrast.js';
 import { HotkeysOverlay } from './hotkeysOverlay.js';
 import { AppSpread, WindowEvents } from './windowsView.js';
@@ -64,7 +65,7 @@ const ANIM_INTERVAL_PAD = 15;
 const RECENT_APPS_KEPT = 10;
 
 const ACTION_ORDER = [
-  'compiz',
+  'pin_widget_apps',
   'bms',
   'blurred_bg',
   'glass',
@@ -97,10 +98,10 @@ const ACTION_ORDER = [
   'animate_preview',
   'animate',
   'window_feedback',
+  'autohide_reveal',
 ];
 
 const REACTIONS = Object.freeze({
-  'lamp-app-animation': ['compiz'],
   'minimize-to-icon': ['window_feedback'],
   'urgent-bounce': ['window_feedback'],
   'minimize-effect': ['window_feedback'],
@@ -121,12 +122,11 @@ const REACTIONS = Object.freeze({
   'running-indicator-color': ['animate'],
   'running-indicator-style': ['animate'],
   'clock-style': ['widget_style'],
-  'calendar-style': ['widget_style'],
   'max-recent-items': ['recents_debounce'],
   'apps-icon': ['layout', 'animate_refresh'],
   'apps-icon-front': ['layout', 'animate_refresh'],
-  'calendar-icon': ['layout', 'animate_refresh'],
-  'clock-icon': ['layout', 'animate_refresh'],
+  'calendar-icon': ['pin_widget_apps', 'layout', 'animate_refresh'],
+  'clock-icon': ['pin_widget_apps', 'layout', 'animate_refresh'],
   'favorites-only': ['layout', 'animate_refresh'],
   'keyboard-focus': ['keyboard_focus'],
   'hotkeys-overlay': ['hotkeys_overlay'],
@@ -197,7 +197,7 @@ const REACTIONS = Object.freeze({
   'glass-blur': ['glass', 'animate'],
   'glass-refraction': ['glass', 'animate'],
   'glass-rim': ['glass', 'animate'],
-  'pressure-sense': [],
+  'pressure-sense': ['autohide_reveal'],
   'downloads-icon': ['layout', 'animate_refresh'],
   'documents-icon': ['layout', 'animate_refresh'],
   'trash-icon': ['trash_style', 'layout', 'animate_refresh'],
@@ -369,6 +369,11 @@ export default class HyperdockExt extends Extension {
 
     // todo follow animator and autohider protocol
     this.services.enable();
+    // a switch already on at start is not a toggle: never pins
+    this._widgetSwitches = {
+      calendar: !!this.calendar_icon,
+      clock: !!this.clock_icon,
+    };
     this._lastServicesUpdate = 0;
     this._onCheckServices();
 
@@ -762,7 +767,7 @@ export default class HyperdockExt extends Extension {
     this._pendingReactions = new Set();
 
     const handlers = {
-      compiz: () => this.integrations?.hookCompiz(),
+      pin_widget_apps: () => this._pinWidgetApps(),
       bms: () => this.integrations?.hookBms(),
       blurred_bg: () => this._updateBlurredBackground(),
       glass: () => {
@@ -819,6 +824,8 @@ export default class HyperdockExt extends Extension {
       },
       animate: () => this.animate(),
       window_feedback: () => this.windowFeedback?.update(),
+      autohide_reveal: () =>
+        this._autohiders().forEach((autohider) => autohider?.recheckReveal()),
     };
 
     for (const action of ACTION_ORDER) {
@@ -868,6 +875,7 @@ export default class HyperdockExt extends Extension {
     this._appSystem.connectObject(
       'installed-changed',
       () => {
+        this.services?.refreshWidgetApps();
         this._onAppsChanged();
       },
       'app-state-changed',
@@ -896,15 +904,11 @@ export default class HyperdockExt extends Extension {
     Main.extensionManager.connectObject(
       'extensions-loaded',
       (manager) => {
-        this.integrations.hookCompiz(true);
         this.integrations.hookBms(true);
       },
       'extension-state-changed',
       (manager, extension) => {
         switch (extension.uuid) {
-          case 'compiz-alike-magic-lamp-effect@hermes83.github.com':
-            this.integrations.hookCompiz(extension.state == 1);
-            break;
           case 'blur-my-shell@aunetx':
             this.integrations.hookBms(extension.state == 1);
             if (extension.state == 1) {
@@ -1104,6 +1108,24 @@ export default class HyperdockExt extends Extension {
     listeners.forEach((l) => {
       if (l._onRestacked) l._onRestacked();
     });
+  }
+
+  // Turning Calendar/Clock on pins the app they draw over when it is not a
+  // favorite yet; turning them off never unpins (see decidePin).
+  _pinWidgetApps() {
+    const favorites = Compat.getFavoriteAppIds(this._appFavorites);
+    const now = {
+      calendar: !!this.calendar_icon,
+      clock: !!this.clock_icon,
+    };
+    Object.keys(now).forEach((kind) => {
+      const appId = this.services?.widgetApp(kind)?.id ?? null;
+      const wasEnabled = !!this._widgetSwitches?.[kind];
+      if (decidePin({ enabled: now[kind], wasEnabled, appId, favorites }) === 'pin') {
+        this._appFavorites.addFavorite(appId);
+      }
+    });
+    this._widgetSwitches = now;
   }
 
   _onAppsChanged() {

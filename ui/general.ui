@@ -113,19 +113,6 @@
           </object>
         </child>
         <child>
-          <object class="AdwActionRow" id="lamp-app-animation-row">
-            <property name="visible">true</property>
-            <property name="title" translatable="yes">Lamp Animation</property>
-            <property name="subtitle" translatable="yes">Add genie on a lamp animation on minimizing windows. Requires the [compiz-alike-magic-lamp-effect@hermes83.github.com] extension. WARNING! This feature is UNSTABLE. Changing this setting may require extension restart.</property>
-            <property name="activatable-widget">lamp-app-animation</property>
-            <child>
-              <object class="GtkSwitch" id="lamp-app-animation">
-                <property name="valign">center</property>
-              </object>
-            </child>
-          </object>
-        </child>
-        <child>
           <object class="AdwActionRow">
             <property name="title" translatable="yes">Minimize Into App Icon</property>
             <property name="subtitle" translatable="yes">Windows shrink into their app's dock icon when minimized and grow out of it when restored.</property>
@@ -140,7 +127,7 @@
         <child>
           <object class="AdwActionRow">
             <property name="title" translatable="yes">Minimize Effect</property>
-            <property name="subtitle" translatable="yes">Genie bends windows into their dock icon, as on macOS, drawn by the GPU. Not used while the Magic Lamp extension is active.</property>
+            <property name="subtitle" translatable="yes">Genie bends windows into their dock icon, as on macOS, drawn by the GPU. Not used while the Magic Lamp extension is active: it then minimizes into the dock icon through the icon geometry set by Minimize Into App Icon.</property>
             <property name="activatable-widget">minimize-effect</property>
             <child>
               <object class="GtkDropDown" id="minimize-effect">
@@ -190,6 +177,13 @@
                 <property name="valign">center</property>
               </object>
             </child>
+          </object>
+        </child>
+        <child>
+          <object class="AdwSpinRow" id="reveal-delay-ms">
+            <property name="title" translatable="yes">Reveal Delay</property>
+            <property name="subtitle" translatable="yes">Milliseconds the pointer must rest on the screen edge before a hidden dock appears. 0 reveals at once.</property>
+            <property name="adjustment">reveal-delay-adjust</property>
           </object>
         </child>
         <child>
@@ -375,5 +369,12 @@
       <item translatable="yes">None</item>
       <item translatable="yes">Bounce</item>
     </items>
+  </object>
+  <object class="GtkAdjustment" id="reveal-delay-adjust">
+    <property name="lower">0</property>
+    <property name="upper">2000</property>
+    <property name="step-increment">50</property>
+    <property name="page-increment">100</property>
+    <property name="value">300</property>
   </object>
 </interface>
