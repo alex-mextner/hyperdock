@@ -224,26 +224,7 @@ export default class HyperdockExt extends Extension {
     this.docks = this.docks ?? [];
 
     if (this._config.docks) {
-      let count = this._config['docks'].length;
-      if (count != this.docks.length) {
-        this.destroyDocks();
-      }
-      this._config.docks.forEach((dc) => {
-        let index = -1;
-        let dc_monitor = dc['monitor'] ?? {};
-        for (let i = 0; i < Main.layoutManager.monitors.length; i++) {
-          let m = Main.layoutManager.monitors[i];
-          if (m.x == dc_monitor['x'] && m.y == dc_monitor['y']) {
-            index = m.index;
-            break;
-          }
-        }
-        if (index != -1) {
-          let d = this.createDock();
-          d._monitorIndex = index;
-          d._config = dc;
-        }
-      });
+      this._createConfiguredDocks();
       return;
     }
 
@@ -276,6 +257,33 @@ export default class HyperdockExt extends Extension {
         d._monitorIndex = i;
       }
     }
+  }
+
+  // One dock per entry of config.docks, placed on the monitor whose x/y
+  // matches the entry; entries naming an absent monitor are skipped.
+  _createConfiguredDocks() {
+    let count = this._config['docks'].length;
+    if (count != this.docks.length) {
+      this.destroyDocks();
+    }
+    this._config.docks.forEach((dc) => {
+      let index = this._findMonitorIndex(dc['monitor'] ?? {});
+      if (index != -1) {
+        let d = this.createDock();
+        d._monitorIndex = index;
+        d._config = dc;
+      }
+    });
+  }
+
+  _findMonitorIndex(dc_monitor) {
+    for (let i = 0; i < Main.layoutManager.monitors.length; i++) {
+      let m = Main.layoutManager.monitors[i];
+      if (m.x == dc_monitor['x'] && m.y == dc_monitor['y']) {
+        return m.index;
+      }
+    }
+    return -1;
   }
 
   destroyDocks() {
@@ -572,28 +580,7 @@ export default class HyperdockExt extends Extension {
         console.error('d2da: loadConfig', err);
       }
 
-      // precompute
-      {
-        let icon_size = this._config['icon-size'] ?? 0;
-        if (typeof icon_size == 'string') {
-          icon_size = parseInt(icon_size);
-        }
-        this._config.icon_size = icon_size > 0 ? icon_size : null;
-      }
-
-      {
-        let speed_up = this._config['speed-up'] ?? 1;
-        if (typeof speed_up == 'string') {
-          speed_up = parseFloat(speed_up);
-        }
-        if (speed_up > 4) {
-          speed_up = 4;
-        }
-        if (speed_up < 0.5) {
-          speed_up = 0.5;
-        }
-        this._config.speed_up = speed_up;
-      }
+      this._precomputeConfig();
     }
 
     let fn_icons = Gio.File.new_for_path(
@@ -606,34 +593,12 @@ export default class HyperdockExt extends Extension {
         if (json['icons']) {
           this.icon_map = json['icons'];
           this.icon_map_cache = {};
-          Object.keys(this.icon_map).forEach((k) => {
-            let path = this.icon_map[k];
-            if (path.toLowerCase().endsWith('.svg')) {
-              let file = Gio.File.new_for_path(
-                GLib.build_filenamev([configDir, path])
-              );
-              if (file.query_exists(null)) {
-                console.log(`loading icon ${file.get_path()}`);
-                this.icon_map_cache[k] = new Gio.FileIcon({ file: file });
-              }
-            }
-          });
+          this._cacheSvgIcons(this.icon_map, this.icon_map_cache, configDir);
         }
         if (json['apps']) {
           this.app_map = json['apps'];
           this.app_map_cache = {};
-          Object.keys(this.app_map).forEach((k) => {
-            let path = this.app_map[k];
-            if (path.toLowerCase().endsWith('.svg')) {
-              let file = Gio.File.new_for_path(
-                GLib.build_filenamev([configDir, path])
-              );
-              if (file.query_exists(null)) {
-                console.log(`loading icon ${file.get_path()}`);
-                this.app_map_cache[k] = new Gio.FileIcon({ file: file });
-              }
-            }
-          });
+          this._cacheSvgIcons(this.app_map, this.app_map_cache, configDir);
         }
       } catch (err) {
         console.error('d2da: loadConfig', err);
@@ -648,6 +613,49 @@ export default class HyperdockExt extends Extension {
       let theme = ctx.get_theme();
       theme.load_stylesheet(fn_style);
     }
+  }
+
+  // Normalises the user-facing config values into the numeric fields the
+  // docks read (string values are accepted from hand-edited JSON).
+  _precomputeConfig() {
+    {
+      let icon_size = this._config['icon-size'] ?? 0;
+      if (typeof icon_size == 'string') {
+        icon_size = parseInt(icon_size);
+      }
+      this._config.icon_size = icon_size > 0 ? icon_size : null;
+    }
+
+    {
+      let speed_up = this._config['speed-up'] ?? 1;
+      if (typeof speed_up == 'string') {
+        speed_up = parseFloat(speed_up);
+      }
+      if (speed_up > 4) {
+        speed_up = 4;
+      }
+      if (speed_up < 0.5) {
+        speed_up = 0.5;
+      }
+      this._config.speed_up = speed_up;
+    }
+  }
+
+  // Fills `cache` with a FileIcon for every existing .svg path in `map`;
+  // shared by the icon and app override maps from icons.json.
+  _cacheSvgIcons(map, cache, configDir) {
+    Object.keys(map).forEach((k) => {
+      let path = map[k];
+      if (path.toLowerCase().endsWith('.svg')) {
+        let file = Gio.File.new_for_path(
+          GLib.build_filenamev([configDir, path])
+        );
+        if (file.query_exists(null)) {
+          console.log(`loading icon ${file.get_path()}`);
+          cache[k] = new Gio.FileIcon({ file: file });
+        }
+      }
+    });
   }
 
   _unloadConfig() {
@@ -1451,40 +1459,7 @@ export default class HyperdockExt extends Extension {
 
     // topbar
     if (this.customize_topbar) {
-      let ss = [];
-      // border
-      if (this.topbar_border_thickness) {
-        let rgba = this._style.rgba(this.topbar_border_color);
-        ss.push(
-          `border: ${this.topbar_border_thickness}px solid rgba(${rgba}); border-top: 0px; border-left: 0px; border-right: 0px;`
-        );
-      }
-
-      // background
-      // ss.push('background: transparent;');
-      {
-        let rgba = this._style.rgba(this.topbar_background_color);
-        ss.push(`background: rgba(${rgba});`);
-      }
-      styles.push(`#panelBox #panel {${ss.join(' ')}}`);
-      ss = [];
-
-      // foreground
-      if (this.topbar_foreground_color && this.topbar_foreground_color[3] > 0) {
-        let rgba = this._style.rgba(this.topbar_foreground_color);
-        styles.push(
-          `.panel-status-indicator-icon, #panelBox #panel * { color: rgba(${rgba}) }`
-        );
-      } else {
-        let rgba = this._style.rgba([0, 0, 0, 1]);
-        let bg = this.topbar_background_color;
-        if (0.3 * bg[0] + 0.59 * bg[1] + 0.11 * bg[2] < 0.5) {
-          rgba = this._style.rgba([1, 1, 1, 1]);
-        }
-        styles.push(
-          `.panel-status-indicator-icon, #panelBox #panel * { color: rgba(${rgba}) }`
-        );
-      }
+      this._pushTopbarStyles(styles);
     }
 
     if (this.separator_thickness) {
@@ -1506,6 +1481,44 @@ export default class HyperdockExt extends Extension {
     this._style.build('custom-d2dl', styles);
 
     this._updateBorderStyle();
+  }
+
+  // Appends the top bar overrides (border, background, readable foreground).
+  _pushTopbarStyles(styles) {
+    let ss = [];
+    // border
+    if (this.topbar_border_thickness) {
+      let rgba = this._style.rgba(this.topbar_border_color);
+      ss.push(
+        `border: ${this.topbar_border_thickness}px solid rgba(${rgba}); border-top: 0px; border-left: 0px; border-right: 0px;`
+      );
+    }
+
+    // background
+    // ss.push('background: transparent;');
+    {
+      let rgba = this._style.rgba(this.topbar_background_color);
+      ss.push(`background: rgba(${rgba});`);
+    }
+    styles.push(`#panelBox #panel {${ss.join(' ')}}`);
+    ss = [];
+
+    // foreground
+    if (this.topbar_foreground_color && this.topbar_foreground_color[3] > 0) {
+      let rgba = this._style.rgba(this.topbar_foreground_color);
+      styles.push(
+        `.panel-status-indicator-icon, #panelBox #panel * { color: rgba(${rgba}) }`
+      );
+    } else {
+      let rgba = this._style.rgba([0, 0, 0, 1]);
+      let bg = this.topbar_background_color;
+      if (0.3 * bg[0] + 0.59 * bg[1] + 0.11 * bg[2] < 0.5) {
+        rgba = this._style.rgba([1, 1, 1, 1]);
+      }
+      styles.push(
+        `.panel-status-indicator-icon, #panelBox #panel * { color: rgba(${rgba}) }`
+      );
+    }
   }
 
   _updateBorderStyle() {
