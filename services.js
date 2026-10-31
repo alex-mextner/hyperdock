@@ -617,24 +617,10 @@ export const Services = class {
       );
       let info;
       while ((info = iter.next_file(this._cancellable ?? null)) !== null) {
-        let child = iter.get_child(info);
-        try {
-          child.delete(this._cancellable ?? null);
-        } catch (e) {
-          if (
-            this._cancellable?.is_cancelled() ||
-            (e?.matches && e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED))
-          ) {
-            break;
-          }
-          console.error('d2da: services emptyTrash child delete', e);
-        }
+        if (!this._deleteTrashChild(iter.get_child(info))) break;
       }
     } catch (e) {
-      if (
-        !this._cancellable?.is_cancelled() &&
-        !(e?.matches && e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED))
-      ) {
+      if (!this._isCancelError(e)) {
         console.error('d2da: services emptyTrash', e);
       }
     } finally {
@@ -647,6 +633,20 @@ export const Services = class {
 
     this.checkTrash();
     this.extension?.animate?.({ refresh: true });
+  }
+
+  // Deletes one trashed item; false when the delete was cancelled, which
+  // ends the emptying loop. Other failures are logged and skipped.
+  _deleteTrashChild(child) {
+    try {
+      child.delete(this._cancellable ?? null);
+    } catch (e) {
+      if (this._isCancelError(e)) {
+        return false;
+      }
+      console.error('d2da: services emptyTrash child delete', e);
+    }
+    return true;
   }
 
   checkTrash() {
@@ -726,32 +726,7 @@ export const Services = class {
         if (fileInfo.get_is_hidden()) {
           continue;
         }
-        let fileName = fileInfo.get_name();
-        let fileModified = fileInfo.get_modification_time();
-
-        let icon = 'file';
-        if (fileInfo.get_icon() && fileInfo.get_icon().names) {
-          icon =
-            this.extension.lookup_icon_from_names(fileInfo.get_icon().names) ??
-            icon;
-        }
-
-        downloadFiles.push({
-          index: 0,
-          name: fileName,
-          display: fileName,
-          icon: icon,
-          type: fileInfo.get_content_type(),
-          path: GLib.build_filenamev([path, fileName]),
-          date: fileModified ?? { tv_sec: 0 },
-          // btime; GLib has no "date added", and moving a file in keeps its
-          // btime on the same filesystem, so creation stands in for it.
-          // Filesystems without btime fall back to the modification time.
-          created: fileInfo.has_attribute(Gio.FILE_ATTRIBUTE_TIME_CREATED)
-            ? fileInfo.get_attribute_uint64(Gio.FILE_ATTRIBUTE_TIME_CREATED)
-            : (fileModified?.tv_sec ?? 0),
-          fileInfo: fileInfo,
-        });
+        downloadFiles.push(this._stackFileEntry(path, fileInfo));
       }
 
       downloadFilesLength = downloadFiles.length;
@@ -765,13 +740,9 @@ export const Services = class {
       downloadFiles.splice(max_recent_items);
       return [downloadFiles, downloadFilesLength];
     } catch (e) {
-      if (
-        this._cancellable?.is_cancelled() ||
-        (e?.matches && e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED))
-      ) {
-        return [[], 0];
+      if (!this._isCancelError(e)) {
+        console.error('d2da: services checkRecentFilesInFolder', e);
       }
-      console.error('d2da: services checkRecentFilesInFolder', e);
       return [[], 0];
     } finally {
       try {
@@ -780,6 +751,44 @@ export const Services = class {
         // ignore close error
       }
     }
+  }
+
+  // true when the error is our own cancellation, which is not worth logging
+  _isCancelError(e) {
+    return !!(
+      this._cancellable?.is_cancelled() ||
+      (e?.matches && e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED))
+    );
+  }
+
+  // one stack file item built from its Gio.FileInfo
+  _stackFileEntry(path, fileInfo) {
+    let fileName = fileInfo.get_name();
+    let fileModified = fileInfo.get_modification_time();
+
+    let icon = 'file';
+    if (fileInfo.get_icon() && fileInfo.get_icon().names) {
+      icon =
+        this.extension.lookup_icon_from_names(fileInfo.get_icon().names) ??
+        icon;
+    }
+
+    return {
+      index: 0,
+      name: fileName,
+      display: fileName,
+      icon: icon,
+      type: fileInfo.get_content_type(),
+      path: GLib.build_filenamev([path, fileName]),
+      date: fileModified ?? { tv_sec: 0 },
+      // btime; GLib has no "date added", and moving a file in keeps its
+      // btime on the same filesystem, so creation stands in for it.
+      // Filesystems without btime fall back to the modification time.
+      created: fileInfo.has_attribute(Gio.FILE_ATTRIBUTE_TIME_CREATED)
+        ? fileInfo.get_attribute_uint64(Gio.FILE_ATTRIBUTE_TIME_CREATED)
+        : (fileModified?.tv_sec ?? 0),
+      fileInfo: fileInfo,
+    };
   }
 
   /*
@@ -1059,26 +1068,12 @@ export const Services = class {
       return;
     }
 
-    let { scaleFactor, iconSize, dock } = settings;
+    let { dock } = settings;
 
     // the glass trash; runs every frame, so only field compares unless the
     // picture or the St.Icon (recreated on icon theme changes) is new
-    if (item === dock._trashIcon) {
-      let gicon = this._glassTrash?.gicon ?? null;
-      if (gicon) {
-        if (item._glassGicon !== gicon || item._glassIcon !== icon) {
-          icon.gicon = gicon;
-          item._glassGicon = gicon;
-          item._glassIcon = icon;
-        }
-        return;
-      }
-      if (item._glassGicon) {
-        // style switched back: hand the item back to the theme icon below
-        item._glassGicon = null;
-        item._glassIcon = null;
-        icon.icon_name = 'user-trash';
-      }
+    if (item === dock._trashIcon && this._updateGlassTrash(item, icon)) {
+      return;
     }
 
     if (!icon.icon_name) {
@@ -1097,86 +1092,81 @@ export const Services = class {
 
     let appId = item._appwell?.app?.get_id();
 
-    // clock
-    if (appId && appId === this._widgetApps?.clock?.id) {
-      if (this.extension.clock_icon) {
-        let clock = item._clock;
-        if (!clock) {
-          clock = new Clock(CANVAS_SIZE, dock.extension._widgetStyle);
-          dock._clock = clock;
-          item._clock = clock;
-          item._image = clock;
-          // renderArea may be destroyed first (shell shutdown); drop the refs
-          // so dock._cleanupIcon never touches a disposed clock
-          clock.connect('destroy', () => {
-            if (item._image === clock) item._image = null;
-            if (item._clock === clock) item._clock = null;
-            if (dock._clock === clock) dock._clock = null;
-          });
-          // item._appwell.first_child.add_child(clock);
-          dock.renderArea.add_child(clock);
-        }
-        if (clock) {
-          clock._icon = icon;
-          clock.width = item._renderer.width * item._renderer.scaleX;
-          clock.height = clock.width;
-          // let toScale = item._scale;
-          // clock.set_scale(toScale, toScale);
-          let canvasScale = clock.width / (clock._canvas.width + 2);
-          clock._canvas.set_scale(canvasScale, canvasScale);
-          clock.x = item._renderer.x;
-          clock.y = item._renderer.y;
-          clock.opacity = item._renderer.opacity;
-          clock.show();
-          item._renderer.opacity = clock.shouldHideIcon() ? 0 : 255;
-        }
-      } else {
-        let clock = item._clock;
-        item._icon.visible = true;
-        clock?.hide();
-      }
-    } else if (item._clock) {
-      this._dropWidget(item, '_clock');
-    }
+    this._updateLiveWidget(item, dock, icon, appId, 'clock', Clock);
+    this._updateLiveWidget(item, dock, icon, appId, 'calendar', Calendar);
+  }
 
-    // calendar
-    if (appId && appId === this._widgetApps?.calendar?.id) {
-      if (this.extension.calendar_icon) {
-        let calendar = item._calendar;
-        if (!calendar) {
-          calendar = new Calendar(CANVAS_SIZE, dock.extension._widgetStyle);
-          dock._calendar = calendar;
-          item._calendar = calendar;
-          item._image = calendar;
-          calendar.connect('destroy', () => {
-            if (item._image === calendar) item._image = null;
-            if (item._calendar === calendar) item._calendar = null;
-            if (dock._calendar === calendar) dock._calendar = null;
-          });
-          dock.renderArea.add_child(calendar);
-        }
-        if (calendar) {
-          calendar._icon = icon;
-          calendar.width = item._renderer.width * item._renderer.scaleX;
-          calendar.height = calendar.width;
-          // let toScale = item._scale;
-          // calendar.set_scale(toScale, toScale);
-          let canvasScale = calendar.width / (calendar._canvas.width + 2);
-          calendar._canvas.set_scale(canvasScale, canvasScale);
-          calendar.x = item._renderer.x;
-          calendar.y = item._renderer.y;
-          calendar.opacity = item._renderer.opacity;
-          calendar.show();
-          item._renderer.opacity = calendar.shouldHideIcon() ? 0 : 255;
-        }
-      } else {
-        let calendar = item._calendar;
-        item._icon.visible = true;
-        calendar?.hide();
+  // Draws the glass picture on the trash item; true when it handled the
+  // frame (the caller stops), false to fall through to the theme icon.
+  _updateGlassTrash(item, icon) {
+    let gicon = this._glassTrash?.gicon ?? null;
+    if (gicon) {
+      if (item._glassGicon !== gicon || item._glassIcon !== icon) {
+        icon.gicon = gicon;
+        item._glassGicon = gicon;
+        item._glassIcon = icon;
       }
-    } else if (item._calendar) {
-      this._dropWidget(item, '_calendar');
+      return true;
     }
+    if (item._glassGicon) {
+      // style switched back: hand the item back to the theme icon below
+      item._glassGicon = null;
+      item._glassIcon = null;
+      icon.icon_name = 'user-trash';
+    }
+    return false;
+  }
+
+  // Clock and Calendar icons share one lifecycle: `name` picks the widget
+  // app (this._widgetApps[name]), the item/dock field (`_${name}`) and the
+  // enabling setting (`${name}_icon`).
+  _updateLiveWidget(item, dock, icon, appId, name, WidgetClass) {
+    let key = `_${name}`;
+    if (appId && appId === this._widgetApps?.[name]?.id) {
+      if (this.extension[`${name}_icon`]) {
+        this._showLiveWidget(item, dock, icon, key, WidgetClass);
+      } else {
+        let widget = item[key];
+        item._icon.visible = true;
+        widget?.hide();
+      }
+    } else if (item[key]) {
+      this._dropWidget(item, key);
+    }
+  }
+
+  // creates the widget on first use, then lays it over the item's renderer
+  _showLiveWidget(item, dock, icon, key, WidgetClass) {
+    let widget = item[key];
+    if (!widget) {
+      widget = this._createLiveWidget(item, dock, key, WidgetClass);
+    }
+    widget._icon = icon;
+    widget.width = item._renderer.width * item._renderer.scaleX;
+    widget.height = widget.width;
+    let canvasScale = widget.width / (widget._canvas.width + 2);
+    widget._canvas.set_scale(canvasScale, canvasScale);
+    widget.x = item._renderer.x;
+    widget.y = item._renderer.y;
+    widget.opacity = item._renderer.opacity;
+    widget.show();
+    item._renderer.opacity = widget.shouldHideIcon() ? 0 : 255;
+  }
+
+  _createLiveWidget(item, dock, key, WidgetClass) {
+    let widget = new WidgetClass(CANVAS_SIZE, dock.extension._widgetStyle);
+    dock[key] = widget;
+    item[key] = widget;
+    item._image = widget;
+    // renderArea may be destroyed first (shell shutdown); drop the refs
+    // so dock._cleanupIcon never touches a disposed widget
+    widget.connect('destroy', () => {
+      if (item._image === widget) item._image = null;
+      if (item[key] === widget) item[key] = null;
+      if (dock[key] === widget) dock[key] = null;
+    });
+    dock.renderArea.add_child(widget);
+    return widget;
   }
 
   // the item no longer shows the app its live widget was drawn over (another
