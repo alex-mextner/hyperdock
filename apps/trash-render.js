@@ -21,18 +21,13 @@
 // usage: gjs -m trash-render.js <size-px>
 
 import Cairo from 'cairo';
-import Gdk from 'gi://Gdk?version=4.0';
-import GdkPixbuf from 'gi://GdkPixbuf';
 import Gio from 'gi://Gio';
-import GLib from 'gi://GLib';
 import System from 'system';
+import { drawCard, familyOfType, loadPicture, roundedRect } from './cards.js';
 
 const FULL_AT = 50; // item count drawn as a full bin
 const TOP_CARDS = 5; // newest items drawn as recognisable cards
 const MAX_FILLER = 36; // pile cards under them; more adds nothing at icon size
-// no thumbnail: decode pictures up to this size, show bigger ones as a card
-const MAX_DECODE_BYTES = 64 * 1024 * 1024;
-const THUMB_DIRS = ['xx-large', 'x-large', 'large', 'normal'];
 const ATTRS = [
   'standard::name',
   'standard::type',
@@ -43,43 +38,9 @@ const ATTRS = [
   'trash::orig-path',
 ].join(',');
 
-const ARCHIVE_RE = new RegExp(
-  'zip|x-tar|compressed|gzip|bzip|x-xz|zstd|x-7z|rar|x-cpio|x-lzma|x-lzip|' +
-    'x-deb|x-rpm|x-archive|x-iso9660|x-apple-diskimage'
-);
-
-// card colours per type family: [main, accent]
-const COLORS = {
-  folder: [[0.42, 0.72, 0.96], [0.3, 0.6, 0.9]],
-  image: [[0.86, 0.92, 0.98], [0.36, 0.7, 0.38]],
-  video: [[0.17, 0.18, 0.22], [1, 1, 1]],
-  audio: [[1.0, 0.37, 0.54], [0.98, 0.18, 0.3]],
-  archive: [[0.86, 0.66, 0.38], [0.55, 0.38, 0.18]],
-  pdf: [[0.98, 0.98, 0.98], [0.9, 0.24, 0.24]],
-  sheet: [[0.98, 0.98, 0.98], [0.2, 0.66, 0.36]],
-  slides: [[0.98, 0.98, 0.98], [0.96, 0.55, 0.16]],
-  doc: [[0.98, 0.98, 0.98], [0.3, 0.52, 0.92]],
-  other: [[0.9, 0.9, 0.92], [0.55, 0.56, 0.6]],
-};
-
 function familyOf(info) {
-  if (info.get_file_type() === Gio.FileType.DIRECTORY) return 'folder';
-  let t = info.get_content_type() ?? '';
-  if (t === 'inode/directory') return 'folder';
-  if (t.startsWith('image/')) return 'image';
-  if (t.startsWith('video/')) return 'video';
-  if (t.startsWith('audio/')) return 'audio';
-  if (ARCHIVE_RE.test(t)) return 'archive';
-  if (t === 'application/pdf') return 'pdf';
-  if (/spreadsheet|excel|csv/.test(t)) return 'sheet';
-  if (/presentation|powerpoint/.test(t)) return 'slides';
-  if (
-    t.startsWith('text/') ||
-    /document|msword|rtf|epub|json|xml|x-tex|markdown/.test(t)
-  ) {
-    return 'doc';
-  }
-  return 'other';
+  let isDir = info.get_file_type() === Gio.FileType.DIRECTORY;
+  return familyOfType(info.get_content_type() ?? '', isDir);
 }
 
 // newest first; a trashed folder is one item, as in Finder
@@ -111,40 +72,25 @@ function listTrash() {
   return items;
 }
 
-// freedesktop thumbnail of the trashed file, or of the file where it used to
-// live (trashing keeps the mtime, so that thumbnail still matches)
-function thumbnailPath(info) {
+function trashedPicture(item, px) {
+  let target = item.info.get_attribute_string('standard::target-uri');
   let uris = [];
-  let target = info.get_attribute_string('standard::target-uri');
   if (target) uris.push(target);
-  let orig = info.get_attribute_byte_string('trash::orig-path');
+  // trashing keeps the mtime, so the thumbnail of the file where it used to
+  // live still matches
+  let orig = item.info.get_attribute_byte_string('trash::orig-path');
   if (orig) uris.push(Gio.File.new_for_path(orig).get_uri());
-  let cache = GLib.build_filenamev([GLib.get_user_cache_dir(), 'thumbnails']);
-  for (let uri of uris) {
-    let md5 = GLib.compute_checksum_for_string(GLib.ChecksumType.MD5, uri, -1);
-    for (let dir of THUMB_DIRS) {
-      let path = GLib.build_filenamev([cache, dir, `${md5}.png`]);
-      if (GLib.file_test(path, GLib.FileTest.EXISTS)) return path;
-    }
-  }
-  return null;
+  return loadPicture(
+    {
+      uris,
+      local: target ? Gio.File.new_for_uri(target).get_path() : null,
+      size: item.info.get_size(),
+      family: item.family,
+    },
+    px
+  );
 }
 
-function loadPicture(item, px) {
-  let path = thumbnailPath(item.info);
-  if (!path && item.family === 'image') {
-    let target = item.info.get_attribute_string('standard::target-uri');
-    let local = target ? Gio.File.new_for_uri(target).get_path() : null;
-    if (local && item.info.get_size() <= MAX_DECODE_BYTES) path = local;
-  }
-  if (!path) return null;
-  try {
-    let pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(path, px, px, true);
-    return pixbuf.apply_embedded_orientation() ?? pixbuf;
-  } catch {
-    return null;
-  }
-}
 
 // deterministic jitter: the same Trash always draws the same pile
 function hashString(s) {
@@ -167,254 +113,6 @@ function rng(seed) {
   };
 }
 
-function roundedRect(cr, x, y, w, h, r) {
-  r = Math.min(r, w / 2, h / 2);
-  cr.newSubPath();
-  cr.arc(x + w - r, y + r, r, -Math.PI / 2, 0);
-  cr.arc(x + w - r, y + h - r, r, 0, Math.PI / 2);
-  cr.arc(x + r, y + h - r, r, Math.PI / 2, Math.PI);
-  cr.arc(x + r, y + r, r, Math.PI, 1.5 * Math.PI);
-  cr.closePath();
-}
-
-function rgb(cr, c, a = 1) {
-  cr.setSourceRGBA(c[0], c[1], c[2], a);
-}
-
-// card outline for the shadow pass, centred on the origin
-function cardShape(cr, family, c, aspect) {
-  let [w, h] = cardSize(family, c, aspect);
-  roundedRect(cr, -w / 2, -h / 2, w, h, c * 0.07);
-}
-
-function cardSize(family, c, aspect) {
-  if (aspect) {
-    return aspect >= 1 ? [c, c / aspect] : [c * aspect, c];
-  }
-  switch (family) {
-    case 'folder':
-      return [c, c * 0.78];
-    case 'video':
-      return [c, c * 0.68];
-    case 'audio':
-      return [c * 0.86, c * 0.86];
-    case 'archive':
-      return [c * 0.8, c * 0.92];
-    case 'image':
-      return [c, c * 0.76];
-    default:
-      return [c * 0.76, c];
-  }
-}
-
-function drawPicture(cr, pixbuf, w, h, r) {
-  cr.save();
-  roundedRect(cr, -w / 2, -h / 2, w, h, r);
-  cr.clip();
-  cr.translate(-w / 2, -h / 2);
-  cr.scale(w / pixbuf.get_width(), h / pixbuf.get_height());
-  Gdk.cairo_set_source_pixbuf(cr, pixbuf, 0, 0);
-  cr.paint();
-  cr.restore();
-}
-
-function drawPlay(cr, s) {
-  cr.arc(0, 0, s, 0, 2 * Math.PI);
-  cr.setSourceRGBA(0, 0, 0, 0.45);
-  cr.fill();
-  cr.moveTo(-s * 0.35, -s * 0.5);
-  cr.lineTo(s * 0.55, 0);
-  cr.lineTo(-s * 0.35, s * 0.5);
-  cr.closePath();
-  cr.setSourceRGBA(1, 1, 1, 0.95);
-  cr.fill();
-}
-
-function drawPage(cr, family, w, h, c) {
-  let [main, accent] = COLORS[family];
-  let fold = w * 0.26;
-  let x = -w / 2;
-  let y = -h / 2;
-  cr.moveTo(x, y + c * 0.05);
-  cr.arc(x + c * 0.05, y + c * 0.05, c * 0.05, Math.PI, 1.5 * Math.PI);
-  cr.lineTo(x + w - fold, y);
-  cr.lineTo(x + w, y + fold);
-  cr.lineTo(x + w, y + h - c * 0.05);
-  cr.arc(x + w - c * 0.05, y + h - c * 0.05, c * 0.05, 0, Math.PI / 2);
-  cr.arc(x + c * 0.05, y + h - c * 0.05, c * 0.05, Math.PI / 2, Math.PI);
-  cr.closePath();
-  rgb(cr, main);
-  cr.fillPreserve();
-  cr.setSourceRGBA(0, 0, 0, 0.18);
-  cr.setLineWidth(c * 0.025);
-  cr.stroke();
-  // folded corner
-  cr.moveTo(x + w - fold, y);
-  cr.lineTo(x + w - fold, y + fold);
-  cr.lineTo(x + w, y + fold);
-  cr.closePath();
-  cr.setSourceRGBA(0.82, 0.83, 0.86, 1);
-  cr.fill();
-
-  let ix = x + w * 0.16;
-  let iw = w * 0.68;
-  if (family === 'pdf') {
-    roundedRect(cr, x + w * 0.1, y + h * 0.5, w * 0.8, h * 0.28, c * 0.03);
-    rgb(cr, accent);
-    cr.fill();
-  } else if (family === 'sheet') {
-    rgb(cr, accent);
-    cr.rectangle(ix, y + h * 0.34, iw, h * 0.48);
-    cr.fill();
-    cr.setSourceRGBA(1, 1, 1, 0.9);
-    cr.setLineWidth(c * 0.02);
-    for (let i = 1; i < 4; i++) {
-      cr.moveTo(ix, y + h * (0.34 + i * 0.12));
-      cr.lineTo(ix + iw, y + h * (0.34 + i * 0.12));
-    }
-    cr.moveTo(ix + iw / 2, y + h * 0.34);
-    cr.lineTo(ix + iw / 2, y + h * 0.82);
-    cr.stroke();
-    return;
-  } else if (family === 'slides') {
-    roundedRect(cr, ix, y + h * 0.36, iw, h * 0.34, c * 0.02);
-    rgb(cr, accent);
-    cr.fill();
-  }
-  // text lines: a full page of them for text, a caption for the others
-  let text = family === 'doc' || family === 'other';
-  rgb(cr, text ? accent : [0.6, 0.62, 0.66], 0.85);
-  let lines = text ? 5 : 2;
-  let top = text ? 0.34 : 0.2;
-  if (family === 'slides') top = 0.76;
-  for (let i = 0; i < lines; i++) {
-    let lw = i === lines - 1 ? iw * 0.6 : iw;
-    roundedRect(cr, ix, y + h * (top + i * 0.11), lw, h * 0.05, h * 0.025);
-    cr.fill();
-  }
-}
-
-function drawGlyphCard(cr, family, w, h, c) {
-  let [main, accent] = COLORS[family];
-  let x = -w / 2;
-  let y = -h / 2;
-  switch (family) {
-    case 'folder': {
-      // back with tab, then the front flap
-      roundedRect(cr, x, y, w * 0.45, h * 0.3, c * 0.05);
-      roundedRect(cr, x, y + h * 0.1, w, h * 0.9, c * 0.07);
-      rgb(cr, accent);
-      cr.fill();
-      roundedRect(cr, x, y + h * 0.24, w, h * 0.76, c * 0.07);
-      rgb(cr, main);
-      cr.fill();
-      return;
-    }
-    case 'image': {
-      roundedRect(cr, x, y, w, h, c * 0.07);
-      rgb(cr, main);
-      cr.fill();
-      cr.arc(x + w * 0.72, y + h * 0.3, h * 0.12, 0, 2 * Math.PI);
-      cr.setSourceRGBA(1, 0.78, 0.2, 1);
-      cr.fill();
-      cr.moveTo(x, y + h);
-      cr.lineTo(x + w * 0.35, y + h * 0.42);
-      cr.lineTo(x + w * 0.6, y + h * 0.75);
-      cr.lineTo(x + w * 0.75, y + h * 0.58);
-      cr.lineTo(x + w, y + h * 0.9);
-      cr.lineTo(x + w, y + h);
-      cr.closePath();
-      rgb(cr, accent);
-      cr.fill();
-      return;
-    }
-    case 'video': {
-      roundedRect(cr, x, y, w, h, c * 0.07);
-      rgb(cr, main);
-      cr.fill();
-      cr.setSourceRGBA(1, 1, 1, 0.55);
-      for (let i = 0; i < 6; i++) {
-        let px = x + w * (0.08 + i * 0.16);
-        cr.rectangle(px, y + h * 0.06, w * 0.07, h * 0.08);
-        cr.rectangle(px, y + h * 0.86, w * 0.07, h * 0.08);
-      }
-      cr.fill();
-      drawPlay(cr, h * 0.24);
-      return;
-    }
-    case 'audio': {
-      let g = new Cairo.LinearGradient(0, y, 0, y + h);
-      g.addColorStopRGBA(0, main[0], main[1], main[2], 1);
-      g.addColorStopRGBA(1, accent[0], accent[1], accent[2], 1);
-      roundedRect(cr, x, y, w, h, c * 0.16);
-      cr.setSource(g);
-      cr.fill();
-      // two beamed eighth notes
-      cr.setSourceRGBA(1, 1, 1, 1);
-      cr.arc(x + w * 0.33, y + h * 0.7, w * 0.1, 0, 2 * Math.PI);
-      cr.arc(x + w * 0.68, y + h * 0.63, w * 0.1, 0, 2 * Math.PI);
-      cr.fill();
-      cr.setLineWidth(w * 0.07);
-      cr.moveTo(x + w * 0.41, y + h * 0.7);
-      cr.lineTo(x + w * 0.41, y + h * 0.28);
-      cr.lineTo(x + w * 0.76, y + h * 0.21);
-      cr.lineTo(x + w * 0.76, y + h * 0.63);
-      cr.stroke();
-      return;
-    }
-    case 'archive': {
-      roundedRect(cr, x, y, w, h, c * 0.07);
-      rgb(cr, main);
-      cr.fill();
-      rgb(cr, accent);
-      cr.rectangle(-w * 0.07, y, w * 0.14, h * 0.62);
-      cr.fill();
-      cr.setSourceRGBA(1, 1, 1, 0.75);
-      for (let i = 0; i < 5; i++) {
-        let zx = i % 2 ? 0 : -w * 0.07;
-        cr.rectangle(zx, y + h * (0.04 + i * 0.11), w * 0.07, h * 0.06);
-      }
-      cr.fill();
-      roundedRect(cr, -w * 0.11, y + h * 0.6, w * 0.22, h * 0.16, c * 0.03);
-      rgb(cr, accent);
-      cr.fill();
-      return;
-    }
-    default:
-      drawPage(cr, family, w, h, c);
-  }
-}
-
-// one item, centred on the origin, `c` = card size
-function drawCard(cr, item, c, angle, pixbuf, detailed) {
-  let aspect = pixbuf ? pixbuf.get_width() / pixbuf.get_height() : 0;
-  let [w, h] = cardSize(item.family, c, aspect);
-  cr.save();
-  cr.rotate(angle);
-
-  // soft drop shadow so cards stay apart from each other and the glass
-  cr.save();
-  cr.translate(c * 0.02, c * 0.05);
-  for (let i = 3; i >= 1; i--) {
-    cardShape(cr, item.family, c + c * 0.03 * i, aspect);
-    cr.setSourceRGBA(0, 0, 0, detailed ? 0.07 : 0.05);
-    cr.fill();
-  }
-  cr.restore();
-
-  if (pixbuf) {
-    // a photo print: white border round the real thumbnail
-    let b = c * 0.05;
-    roundedRect(cr, -w / 2 - b, -h / 2 - b, w + 2 * b, h + 2 * b, c * 0.08);
-    cr.setSourceRGBA(0.99, 0.99, 0.99, 1);
-    cr.fill();
-    drawPicture(cr, pixbuf, w, h, c * 0.04);
-    if (item.family === 'video') drawPlay(cr, Math.min(w, h) * 0.22);
-  } else {
-    drawGlyphCard(cr, item.family, w, h, c);
-  }
-  cr.restore();
-}
 
 function drawTrash(items, S) {
   let surface = new Cairo.ImageSurface(Cairo.Format.ARGB32, S, S);
@@ -551,7 +249,7 @@ function drawTrash(items, S) {
       let y = Math.min(pileTop + sy * c, floor - c * 0.36);
       let x = cx + sx * (halfAt(y) - c * 0.42);
       let angle = sa + (rand() - 0.5) * 0.18;
-      let pixbuf = loadPicture(item, Math.ceil(c * 1.5));
+      let pixbuf = trashedPicture(item, Math.ceil(c * 1.5));
       cr.save();
       cr.translate(x, y);
       drawCard(cr, item, c, angle, pixbuf, true);
