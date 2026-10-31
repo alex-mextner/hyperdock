@@ -102,8 +102,6 @@ export function pileLayers(items, iconFor = () => null) {
 
 // ---- grouping (batches) ----------------------------------------------
 
-const DAY = 24 * 60 * 60;
-
 export const DATE_BUCKETS = [
   ['today', 'Today'],
   ['yesterday', 'Yesterday'],
@@ -112,20 +110,21 @@ export const DATE_BUCKETS = [
   ['older', 'Earlier'],
 ];
 
-// Start of the local calendar day containing `now` (a Date), in seconds.
-function startOfDay(now) {
-  return new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() / 1000;
+// Start (seconds) of the local calendar day `daysAgo` days before the one
+// containing `now`. Built from calendar fields, not 86400-second steps: a
+// day with a daylight-saving change is 23 or 25 hours long.
+function dayStart(now, daysAgo) {
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysAgo).getTime() / 1000;
 }
 
 // The bucket of a timestamp (seconds). Calendar days, as in macOS: "Today"
 // since this midnight, "Yesterday" the day before, then the 7 and 30 days
 // before today. A time in the future counts as today.
 export function dateBucket(seconds, now) {
-  const today = startOfDay(now);
-  if (seconds >= today) return 'today';
-  if (seconds >= today - DAY) return 'yesterday';
-  if (seconds >= today - 7 * DAY) return 'week';
-  if (seconds >= today - 30 * DAY) return 'month';
+  if (seconds >= dayStart(now, 0)) return 'today';
+  if (seconds >= dayStart(now, 1)) return 'yesterday';
+  if (seconds >= dayStart(now, 7)) return 'week';
+  if (seconds >= dayStart(now, 30)) return 'month';
   return 'older';
 }
 

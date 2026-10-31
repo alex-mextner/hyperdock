@@ -50,6 +50,7 @@ check(iconFileOf(new Gio.ThemedIcon({ names: ['nope'] }), lookup) === null, 'an 
 // ---- recents --------------------------------------------------------------
 const started = [];
 const app = (name, id) => ({
+  get_id: () => `${id}.desktop`,
   get_name: () => name,
   get_icon: () => new Gio.ThemedIcon({ names: [id] }),
   activate: () => started.push(name),
@@ -60,6 +61,7 @@ check(items[0].iconFile === '/icons/calc.svg' && items[1].iconFile === null, 'ea
 check(items[0].type === 'application/x-desktop' && items[0].gicon !== null, 'an item is an application with its icon');
 items[1].activate();
 check(same(started, ['Other']), 'activating an item starts its app');
+check(items[0].id === 'calc.desktop', 'an item keeps its app id, so two apps sharing a name stay apart');
 check(recentItems([], lookup).length === 0, 'no apps, no items');
 
 finish();

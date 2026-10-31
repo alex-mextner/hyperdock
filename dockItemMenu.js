@@ -116,13 +116,17 @@ export const DockItemList = GObject.registerClass(
           return;
         }
         target._lastExecTime = now;
-        if (!f.files()) {
+        // Recents is rebuilt from the app system, which may have been empty
+        // when its stack was made
+        if (!f.files() || f.stack?.isRecents) {
           f.prepare();
         }
         let files = f.files() || [];
         if (!files.length) return;
         let maxFan = dock.extension.services?.maxFanItems() ?? 5;
         let view = resolveStackView(f, maxFan);
+        // a side dock has no fan and Recents no folder to open instead
+        if (view === 'fan' && !f.folder && dock.isVertical()) view = 'grid';
         if (view === 'grid' || view === 'list') {
           dock._destroyList();
           dock._stackPanel = new StackPanel(dock, target, f.stack, files, view);

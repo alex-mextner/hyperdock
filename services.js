@@ -393,7 +393,7 @@ export const Services = class {
       this._iconFile(name)
     );
     // app state changes all the time; redraw only when the list did change
-    let signature = items.map((item) => item.name).join('\n');
+    let signature = items.map((item) => `${item.id}:${item.name}`).join('\n');
     if (signature === stack.signature) return;
     stack.signature = signature;
     stack.files = items;

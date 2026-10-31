@@ -18,11 +18,10 @@ import {
 const { check, finish } = createChecker();
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
-// Fri 2026-10-30 15:30 local; seconds helpers relative to its midnight
+// Fri 2026-10-30 15:30 local; `at(n)` is the start of the local day n days before
 const NOW = new Date(2026, 9, 30, 15, 30);
-const midnight = new Date(2026, 9, 30).getTime() / 1000;
+const at = (days, extra = 0) => new Date(2026, 9, 30 - days).getTime() / 1000 + extra;
 const DAY = 86400;
-const at = (days, extra = 0) => midnight - days * DAY + extra;
 
 // ---- date buckets -----------------------------------------------------
 check(dateBucket(at(0, 1), NOW) === 'today', 'a file from this morning is Today');
@@ -36,6 +35,17 @@ check(dateBucket(at(7, -1), NOW) === 'month', 'older than 7 days is Previous 30 
 check(dateBucket(at(30), NOW) === 'month', 'exactly 30 days back is still Previous 30 Days');
 check(dateBucket(at(30, -1), NOW) === 'older', 'older than 30 days is Earlier');
 check(dateBucket(0, NOW) === 'older', 'epoch is Earlier');
+
+// a day with a daylight-saving change is not 86400 s long: dates built from
+// calendar fields, whatever the machine's time zone
+const dst = new Date(2026, 9, 26, 12);
+const secs = (y, m, d, h, min) => new Date(y, m, d, h, min).getTime() / 1000;
+check(dateBucket(secs(2026, 9, 25, 0, 30), dst) === 'yesterday', 'the early hours of yesterday are Yesterday');
+check(dateBucket(secs(2026, 9, 24, 23, 30), dst) === 'week', 'the evening before yesterday is Previous 7 Days');
+check(dateBucket(secs(2026, 9, 19, 0, 30), dst) === 'week', 'seven calendar days back is Previous 7 Days');
+check(dateBucket(secs(2026, 9, 18, 23, 30), dst) === 'month', 'older than seven calendar days is Previous 30 Days');
+const spring = new Date(2026, 2, 30, 12);
+check(dateBucket(secs(2026, 2, 29, 0, 30), spring) === 'yesterday', 'a short day (spring forward) still has its early hours in Yesterday');
 
 // ---- kind buckets -----------------------------------------------------
 const kinds = {

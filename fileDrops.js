@@ -519,8 +519,11 @@ export class FileDrops {
   _targetFor(dock, item) {
     if (item === dock._trashIcon) return { item, dock, kind: 'trash' };
     if (item._folderStack) {
-      const dir = Gio.File.new_for_path(item._folderStack.path);
-      return { item, dock, kind: 'folder', dir };
+      // Recents lists apps, not a folder: nothing to drop files into
+      const path = item._folderStack.path;
+      return path
+        ? { item, dock, kind: 'folder', dir: Gio.File.new_for_path(path) }
+        : null;
     }
     if (item._mountType) {
       const mount = this.extension.services?._mounts?.[item._mountId];

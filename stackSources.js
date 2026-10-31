@@ -112,6 +112,7 @@ export function recentItems(apps, lookup) {
     const gicon = app.get_icon();
     return {
       index,
+      id: app.get_id?.() ?? null,
       name: app.get_name(),
       icon: null,
       gicon,

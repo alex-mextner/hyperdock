@@ -17,6 +17,13 @@ function invalidate(dock) {
   dock._needsLayout = true;
 }
 
+// An open fan or panel showing `item` must close before the item goes
+function releaseDropdown(dock, item) {
+  if (dock._list?._target === item || dock._stackPanel?._target === item) {
+    dock._destroyList();
+  }
+}
+
 // A dock item for `stack`, opening the folder (or, for Recents, the app list)
 // as a fan, grid or list.
 function createStackItem(dock, services, stack) {
@@ -45,10 +52,7 @@ export function syncFolderStacks(dock) {
     if (stacks.includes(item._folderStack)) {
       return;
     }
-    // the list may be showing this stack's files
-    if (dock._list?._target === item) {
-      dock._destroyList();
-    }
+    releaseDropdown(dock, item);
     item.destroy();
     dock._folderIcons.delete(key);
     invalidate(dock);
@@ -73,9 +77,7 @@ export function syncRecentsStack(dock) {
   let stack = dock.extension.recent_apps_count ? services?.recentsStack : null;
   let item = dock._recentsIcon;
   if (item && item._folderStack !== stack) {
-    if (dock._list?._target === item) {
-      dock._destroyList();
-    }
+    releaseDropdown(dock, item);
     item.destroy();
     dock._recentsIcon = null;
     invalidate(dock);

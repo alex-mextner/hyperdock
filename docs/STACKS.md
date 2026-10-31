@@ -29,6 +29,7 @@ Recovered from the project tickets and the session history (2026-10-11, 2026-10-
 
 - Batches in the dropdown follow the macOS "Group By" idea (date added or kind). Recents has no timestamps (the list is ordered by when an app closed), so it stays one batch.
 - The fan view is an arc of at most N items; batches apply to the Grid and List views.
+- The built-in Screenshots stack appears once `<Pictures>/Screenshots` exists when the stacks are set up (enable, or a stack setting changes); a folder GNOME creates with the first screenshot is picked up at the next such rebuild. List the folder in `folder-stacks` to have it from the start.
 - The default grouping is by date; "None" restores the flat list.
 
 ## Why the dropdown ignored clicks
