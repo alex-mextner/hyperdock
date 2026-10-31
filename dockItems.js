@@ -24,6 +24,7 @@ import {
 
 import { DockPosition } from './dock.js';
 import { indicatorBand, indicatorPlacement, visibleEdge } from './iconGeometry.js';
+import { TranslationFollower } from './overlayFollow.js';
 
 // gap between the running indicator and the dock edge, share of the icon size
 const INDICATOR_EDGE_MARGIN = 0.06;
@@ -264,11 +265,14 @@ export const DockItemBadgeOverlay = GObject.registerClass(
         name: 'd2daBadgeOverlay',
         ...params,
       });
+      // badges, counters and progress bars bounce with their icon
+      this._follower = new TranslationFollower(this);
     }
 
     update(icon, data) {
       let renderer = this.renderer;
       let { noticesCount, progress, style, extension, dock } = data;
+      this._follower.to(icon._renderer);
 
       let baseIconSize = dock._iconSizeScaledDown || icon._icon.width;
       renderer.width = baseIconSize;
