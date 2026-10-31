@@ -37,7 +37,8 @@ function resolveStackView(f, maxFan) {
 // when files were cut, and orders them by index.
 function buildFanItems(f, files, maxFan, file_explorer, target) {
   files = files.slice(0, maxFan);
-  if (files.length < f.total()) {
+  // a stack with no folder (Recents) has nowhere for "More..." to go
+  if (f.folder && files.length < f.total()) {
     files = [
       {
         index: -1,
@@ -52,6 +53,14 @@ function buildFanItems(f, files, maxFan, file_explorer, target) {
   return files.sort(function (a, b) {
     return a.index > b.index ? 1 : -1;
   });
+}
+
+// The command a fan entry runs: "More..." its own, a folder in the file
+// manager, anything else in its default application.
+function fanCommand(item, fileExplorer) {
+  if (item.type.includes('exec')) return item.exec;
+  let path = GLib.shell_quote(item.path);
+  return item.type.includes('directory') ? `${fileExplorer} ${path}` : `xdg-open ${path}`;
 }
 
 // Creates, slides out or raises the dock's fan list as its state
@@ -216,8 +225,8 @@ export const DockItemList = GObject.registerClass(
           } else {
             _icon = new St.Icon({
               name: 'icon',
-              icon_name: l.icon,
               icon_size: icon_size,
+              ...(l.gicon ? { gicon: l.gicon } : { icon_name: l.icon }),
             });
           }
           w._icon.add_child(_icon);
@@ -228,21 +237,14 @@ export const DockItemList = GObject.registerClass(
         // label.set_scale(0.5, 0.5);
 
         icon.connect('button-press-event', () => {
-          // let path = Gio.File.new_for_path(`Downloads/${l.name}`).get_path();
-          let path = l.path;
-          let cmd = `xdg-open "${path}"`;
-
-          if (l.type.includes('directory')) {
-            cmd = `${file_explorer} "${path}"`;
-          }
-          if (l.type.includes('exec')) {
-            cmd = l.exec;
-          }
-
           this.visible = false;
           this.dock._maybeBounce(this._target);
-
-          trySpawnCommandLine(cmd).catch((err) => {
+          // an app of the Recents stack starts itself
+          if (l.activate) {
+            l.activate();
+            return;
+          }
+          trySpawnCommandLine(fanCommand(l, file_explorer)).catch((err) => {
             console.log(err);
           });
         });

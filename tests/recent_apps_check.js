@@ -1,13 +1,10 @@
-// gjs -m tests/recent_apps_check.js - recent-apps section rules (pure logic, no
-// GNOME Shell): the MRU list, what it shows, where its separator goes.
-// Exits 1 on failure.
+// gjs -m tests/recent_apps_check.js - the Recents stack's list rules (pure logic, no
+// GNOME Shell): the MRU list and what it shows. Exits 1 on failure.
 import { createChecker } from './harness.js';
 
 import {
-  forgetRecent,
   isLaunchable,
   pickRecents,
-  recentSeparatorIndex,
   rememberRecent,
 } from '../recentApps.js';
 
@@ -61,25 +58,6 @@ test('remember: panel and daemon spellings replace each other', () => {
   assert.deepEqual(rememberRecent(['a', OA_PANEL], GOA_DAEMON, 5), [
     OA_PANEL,
     'a',
-  ]);
-});
-
-test('forget: drops only that id, order kept', () => {
-  assert.deepEqual(forgetRecent(['a', 'b', 'c'], 'b'), ['a', 'c']);
-});
-
-test('forget: unknown id changes nothing', () => {
-  assert.deepEqual(forgetRecent(['a', 'b'], 'zzz'), ['a', 'b']);
-});
-
-test('forget: removes both spellings of Online Accounts', () => {
-  assert.deepEqual(forgetRecent(['a', GOA_DAEMON, 'b', OA_PANEL], OA_PANEL), [
-    'a',
-    'b',
-  ]);
-  assert.deepEqual(forgetRecent(['a', GOA_DAEMON, 'b'], GOA_DAEMON), [
-    'a',
-    'b',
   ]);
 });
 
@@ -163,33 +141,6 @@ test('launchable: NoDisplay apps are hidden, Settings panels are not', () => {
     }),
     true
   );
-});
-
-test('separator: none without a recents section', () => {
-  assert.equal(recentSeparatorIndex([]), -1);
-  assert.equal(recentSeparatorIndex(['favorite', 'running']), -1);
-  assert.equal(recentSeparatorIndex(['favorite', 'favorite']), -1);
-});
-
-test('separator: sits between the running and the recent apps', () => {
-  assert.equal(recentSeparatorIndex(['running', 'recent']), 1);
-  assert.equal(
-    recentSeparatorIndex(['favorite', 'favorite', 'running', 'running', 'recent', 'recent']),
-    4
-  );
-});
-
-test('separator: the Shell separator already splits pinned from recents', () => {
-  assert.equal(recentSeparatorIndex(['favorite', 'recent']), -1);
-  assert.equal(recentSeparatorIndex(['favorite', 'favorite', 'recent', 'recent']), -1);
-});
-
-test('separator: nothing before the recents means no separator', () => {
-  assert.equal(recentSeparatorIndex(['recent', 'recent']), -1);
-});
-
-test('separator: a running app past the recents (mid-redisplay) adds none', () => {
-  assert.equal(recentSeparatorIndex(['favorite', 'running', 'recent', 'running']), -1);
 });
 
 for (const [name, fn] of cases) {

@@ -45,7 +45,7 @@ import { WallpaperTone, markColors } from './contrast.js';
 import { HotkeysOverlay } from './hotkeysOverlay.js';
 import { AppSpread, WindowEvents } from './windowsView.js';
 import { FileDrops } from './fileDrops.js';
-import { forgetRecent, isLaunchable, pickRecents, rememberRecent } from './recentApps.js';
+import { isLaunchable, pickRecents, rememberRecent } from './recentApps.js';
 
 import {
   Extension,
@@ -60,9 +60,9 @@ const ANIM_ICON_QUALITY = 2.0;
 const ANIM_INTERVAL = 15;
 const ANIM_INTERVAL_PAD = 15;
 
-// MRU length kept in dconf; above the largest recent-apps-count so pinned
-// or running apps in the list still leave enough candidates
-const RECENT_APPS_KEPT = 10;
+// MRU length kept in dconf; above the largest recent-apps-count (50) so
+// pinned or running apps in the list still leave enough candidates
+const RECENT_APPS_KEPT = 100;
 
 const ACTION_ORDER = [
   'pin_widget_apps',
@@ -131,6 +131,10 @@ const REACTIONS = Object.freeze({
   'keyboard-focus': ['keyboard_focus'],
   'hotkeys-overlay': ['hotkeys_overlay'],
   'recent-apps-count': ['recent_apps', 'layout', 'animate_refresh'],
+  'recents-stack-view': ['recent_apps', 'layout', 'animate_refresh'],
+  'recents-stack-display': ['recent_apps', 'layout', 'animate_refresh'],
+  'screenshots-icon': ['folder_stacks_setup', 'layout', 'animate_refresh'],
+  'downloads-stack-group': ['folder_stacks_setup', 'layout', 'animate_refresh'],
   'downloads-path': ['folder_stacks_setup', 'layout', 'animate_refresh'],
   'folder-stacks': ['folder_stacks_setup', 'layout', 'animate_refresh'],
   'downloads-stack-view': ['folder_stacks_setup', 'layout', 'animate_refresh'],
@@ -795,9 +799,7 @@ export default class HyperdockExt extends Extension {
         this.services?.refreshFolderStacks();
         this.services?._debounceCheckRecents();
       },
-      recent_apps: () => {
-        this.docks?.forEach((dock) => dock.dash?._queueRedisplay());
-      },
+      recent_apps: () => this.services?.setupRecentsStack(),
       keyboard_focus: () => {
         this.docks?.forEach((dock) => dock._updateKeyboardFocus());
       },
@@ -1026,7 +1028,7 @@ export default class HyperdockExt extends Extension {
     this._settings.set_strv('recent-apps', ids);
   }
 
-  // Apps the dock shows after the running ones: recently closed, not pinned,
+  // Apps the Recents stack lists: recently closed, not pinned,
   // not running (a running app already has its own icon), launchable
   recentDockApps() {
     let count = this.recent_apps_count;
@@ -1049,15 +1051,11 @@ export default class HyperdockExt extends Extension {
     });
   }
 
-  // "Remove from Dock" / drag-off on a recent app: the id leaves the list,
-  // the dock rebuilds without it
-  forgetRecentApp(id) {
+  // "Clear Recents" in the Recents stack's menu
+  clearRecentApps() {
     if (!this._settings) return;
-    let ids = this._settings.get_strv('recent-apps');
-    let next = forgetRecent(ids, id);
-    if (next.length === ids.length) return;
-    this._settings.set_strv('recent-apps', next);
-    this._queueReactions(REACTIONS['recent-apps-count']);
+    this._settings.set_strv('recent-apps', []);
+    this.services?.refreshRecentsStack();
   }
 
   _removeEvents() {
@@ -1137,6 +1135,8 @@ export default class HyperdockExt extends Extension {
   }
 
   _onAppsChanged() {
+    // a closed, launched or (un)pinned app changes what Recents lists
+    this.services?.refreshRecentsStack();
     let listeners = [...this.listeners];
     listeners.forEach((l) => {
       if (l._onAppsChanged) l._onAppsChanged();

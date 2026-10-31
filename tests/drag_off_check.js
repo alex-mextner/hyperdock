@@ -233,13 +233,12 @@ test('zone: a left and a right dock work the same way', () => {
   assert.equal(isOutside(right, 45, 1066, 400), false);
 });
 
-test('what a release removes: pinned unpins, recent forgets, the rest nothing', () => {
+test('what a release removes: pinned unpins, the rest nothing', () => {
   const on = { enabled: true, overviewOpen: false };
-  assert.equal(removalKind({ ...on, pinned: true, recent: false }), 'unpin');
-  assert.equal(removalKind({ ...on, pinned: false, recent: true }), 'forget');
-  assert.equal(removalKind({ ...on, pinned: false, recent: false }), null, 'running only');
-  assert.equal(removalKind({ enabled: false, overviewOpen: false, pinned: true, recent: false }), null);
-  assert.equal(removalKind({ enabled: true, overviewOpen: true, pinned: true, recent: false }), null);
+  assert.equal(removalKind({ ...on, pinned: true }), 'unpin');
+  assert.equal(removalKind({ ...on, pinned: false }), null, 'running only');
+  assert.equal(removalKind({ enabled: false, overviewOpen: false, pinned: true }), null);
+  assert.equal(removalKind({ enabled: true, overviewOpen: true, pinned: true }), null);
 });
 
 for (const [name, fn] of cases) {

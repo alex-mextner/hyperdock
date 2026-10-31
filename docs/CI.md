@@ -47,6 +47,8 @@ const { module } = await importWithStubs('launcherEntry.js', {
 | --- | --- |
 | `launcher_entry_check.js` | Unity LauncherEntry parsing: id normalisation, count/progress clamping, partial updates, unknown apps, sender cleanup |
 | `recents_check.js` | folder-stack/recents file list: sort orders, hidden files, counts, missing folder, fan size |
+| `stack_model_check.js`, `stack_sources_check.js`, `stack_geometry_check.js`, `stack_panel_check.js` | stacks: date/kind batches, pile layout, the dock group's order, which stacks the settings ask for, recent-app items, popover placement, press handling, persisting a stack option |
+| `stack_pile_check.js` | the pile renderer (`apps/stack-pile.js`): PNG output, nothing clipped, missing files fall back to cards |
 | `desktop_escape_check.js` | `.desktop` value/Exec escaping, round-tripped through the real keyfile and shell parsers for hostile paths |
 | `geometry_check.js` | `isInRect` / `isOverlapRect` / distance helpers behind hit-testing and intellihide |
 | `timer_check.js`, `window_tracker_check.js`, `compat_baseline_check.js` | timer hardening, window tracking lifecycle, Shell compatibility layer |

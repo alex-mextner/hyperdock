@@ -186,10 +186,11 @@ export const SettingsKeys = (patch) => {
       widget_type: 'dropdown',
       test: { values: [0, 1] },
     },
+    // a count, 0..50 (schema range); an AdwSpinRow in ui/others.ui
     'recent-apps-count': {
-      default_value: 0,
-      widget_type: 'dropdown',
-      test: { values: [0, 1, 2, 3, 4, 5] },
+      default_value: 20,
+      widget_type: 'int',
+      test: { values: [0, 20, 50] },
     },
     'menu-open-at-login': {
       default_value: false,
@@ -276,9 +277,31 @@ export const SettingsKeys = (patch) => {
       test: { values: [0, 1, 2, 3, 4] },
     },
     'downloads-stack-display': {
-      default_value: 0,
+      default_value: 1,
       widget_type: 'dropdown',
       options: ['folder', 'stack'],
+      test: { values: [0, 1] },
+    },
+    'downloads-stack-group': {
+      default_value: 1,
+      widget_type: 'dropdown',
+      options: ['none', 'date', 'kind'],
+      test: { values: [0, 1, 2] },
+    },
+    'screenshots-icon': {
+      default_value: true,
+      widget_type: 'switch',
+    },
+    'recents-stack-view': {
+      default_value: 3,
+      widget_type: 'dropdown',
+      options: ['fan', 'grid', 'list', 'automatic'],
+      test: { values: [0, 1, 2, 3] },
+    },
+    'recents-stack-display': {
+      default_value: 1,
+      widget_type: 'dropdown',
+      options: ['plain', 'stack'],
       test: { values: [0, 1] },
     },
     'downloads-icon-rotate-labels': {

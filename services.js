@@ -1,7 +1,7 @@
 'use strict';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
-import { trySpawnCommandLine, getDownloadsDir } from './utils.js';
+import { trySpawnCommandLine, getDownloadsDir, getScreenshotsDir } from './utils.js';
 // import { trySpawnCommandLine } from 'resource:///org/gnome/shell/misc/util.js';
 
 import Gio from 'gi://Gio';
@@ -16,12 +16,9 @@ import { detectWidgetApp } from './widgetAppsGio.js';
 import { GlassTrash } from './apps/trash.js';
 import { LauncherEntries } from './launcherEntry.js';
 import Shell from 'gi://Shell';
-import {
-  STACK_VIEWS,
-  STACK_SORTS,
-  STACK_DISPLAYS,
-  pick,
-} from './stackPanel.js';
+import { STACK_VIEWS, STACK_DISPLAYS, pileLayers } from './stackModel.js';
+import { folderStackSpecs, recentItems } from './stackSources.js';
+import { StackPile } from './stackPile.js';
 
 // sync with animator
 const CANVAS_SIZE = 120;
@@ -260,63 +257,35 @@ export const Services = class {
     }
   }
 
-  // Folders shown as stacks right of the apps, macOS style: Downloads plus the
-  // `folder-stacks` setting. Each folder is watched so its newest files are
-  // already listed when the stack opens.
+  // Stacks of the dock's group, macOS style: Recents (apps), Downloads, the
+  // `folder-stacks` setting and Screenshots (stackSources.js decides which).
+  // Each folder is watched so its newest files are already listed when the
+  // stack opens.
   setupFolderStacks() {
     this._teardownFolderStacks();
 
-    let downloads = this.extension.downloads_path;
+    let ext = this.extension;
+    let downloads = ext.downloads_path;
     if (!downloads || !GLib.file_test(downloads, GLib.FileTest.IS_DIR)) {
       downloads = getDownloadsDir();
     }
-    let ext = this.extension;
-    let stacks = [
+    let specs = folderStackSpecs(
       {
-        key: 'downloads',
-        path: downloads,
-        title: 'Downloads',
-        icon: this._folderIconName(Gio.File.new_for_path(downloads)),
-        isDownloads: true,
-        view: STACK_VIEWS[ext.downloads_stack_view] ?? STACK_VIEWS[0],
-        sort: STACK_SORTS[ext.downloads_stack_sort] ?? STACK_SORTS[0],
-        display:
-          STACK_DISPLAYS[ext.downloads_stack_display] ?? STACK_DISPLAYS[0],
+        downloads: {
+          path: downloads,
+          view: ext.downloads_stack_view,
+          sort: ext.downloads_stack_sort,
+          display: ext.downloads_stack_display,
+          group: ext.downloads_stack_group,
+        },
+        entries: ext.folder_stacks,
+        screenshots: { enabled: ext.screenshots_icon, path: getScreenshotsDir() },
       },
-    ];
-
-    // entries: "path" or { path, title?, icon?, view?, sort?, display? };
-    // "~/" means the home folder
-    (ext.folder_stacks || []).forEach((entry, entryIndex) => {
-      let spec = typeof entry === 'string' ? { path: entry } : entry;
-      if (!spec || typeof spec.path !== 'string') {
-        return;
-      }
-      let path = spec.path.replace(/^~(?=\/|$)/, GLib.get_home_dir());
-      let dir = Gio.File.new_for_path(path);
-      if (!GLib.file_test(path, GLib.FileTest.IS_DIR)) {
-        console.warn(`d2da: folder stack ${path} is not a folder`);
-        return;
-      }
-      path = dir.get_path();
-      if (stacks.some((s) => s.path === path)) {
-        return;
-      }
-      stacks.push({
-        key: path,
-        path,
-        title: spec.title || this._folderDisplayName(dir),
-        icon: spec.icon || this._folderIconName(dir),
-        // the stack's menu rewrites this entry of folder-stacks
-        entryIndex,
-        view: pick(spec.view, STACK_VIEWS),
-        sort: pick(spec.sort, STACK_SORTS),
-        display: pick(spec.display, STACK_DISPLAYS),
-      });
-    });
+      this._stackEnv()
+    );
 
     // one unusable entry must not keep the whole dock from loading
-    stacks = stacks.filter((stack) => {
+    let stacks = specs.filter((stack) => {
       try {
         stack.app = this.setupFolderIcon(
           stack.key,
@@ -330,30 +299,117 @@ export const Services = class {
         return false;
       }
     });
-    stacks.forEach((stack) => {
-      stack.files = null;
-      stack.total = 0;
-      // Unwatched stacks still list their files on open via prepare().
-      stack.monitor = watchDir(
-        Gio.File.new_for_path(stack.path),
-        `folder stack ${stack.path}`
-      );
-      stack.monitor?.connectObject(
-        'changed',
-        (fileMonitor, file, otherFile, eventType) => {
-          switch (eventType) {
-            case Gio.FileMonitorEvent.CHANGED:
-            case Gio.FileMonitorEvent.CREATED:
-            case Gio.FileMonitorEvent.MOVED_IN:
-              return;
-          }
-          this._debounceCheckFolderStack(stack);
-        },
-        this
-      );
-      this._debounceCheckFolderStack(stack);
-    });
+    stacks.forEach((stack) => this._watchStack(stack));
     this.folderStacks = stacks;
+    this.setupRecentsStack();
+  }
+
+  // what stackSources.folderStackSpecs needs of the file system
+  _stackEnv() {
+    return {
+      home: GLib.get_home_dir(),
+      isDir: (path) => GLib.file_test(path, GLib.FileTest.IS_DIR),
+      normalize: (path) => Gio.File.new_for_path(path).get_path(),
+      titleOf: (path) => this._folderDisplayName(Gio.File.new_for_path(path)),
+      iconOf: (path) => this._folderIconName(Gio.File.new_for_path(path)),
+      warn: (message) => console.warn(`d2da: ${message}`),
+    };
+  }
+
+  _watchStack(stack) {
+    stack.files = null;
+    stack.total = 0;
+    // Unwatched stacks still list their files on open via prepare().
+    stack.monitor = watchDir(
+      Gio.File.new_for_path(stack.path),
+      `folder stack ${stack.path}`
+    );
+    stack.monitor?.connectObject(
+      'changed',
+      (fileMonitor, file, otherFile, eventType) => {
+        switch (eventType) {
+          case Gio.FileMonitorEvent.CHANGED:
+          case Gio.FileMonitorEvent.CREATED:
+          case Gio.FileMonitorEvent.MOVED_IN:
+            return;
+        }
+        this._debounceCheckFolderStack(stack);
+      },
+      this
+    );
+    this._debounceCheckFolderStack(stack);
+  }
+
+  // The Recents stack: the recently closed apps as one stack, first in the
+  // group. Null when recent-apps-count is 0. Its list is rebuilt by
+  // refreshRecentsStack() whenever the apps, favorites or the list change.
+  setupRecentsStack() {
+    this._teardownRecentsStack();
+    let ext = this.extension;
+    if (!ext.recent_apps_count) return;
+    let stack = {
+      key: 'recents',
+      title: 'Recents',
+      isRecents: true,
+      view: STACK_VIEWS[ext.recents_stack_view] ?? 'automatic',
+      display: STACK_DISPLAYS[ext.recents_stack_display] ?? 'stack',
+      group: 'none',
+      files: [],
+      total: 0,
+    };
+    stack.app = this._createRecentsApp();
+    this.recentsStack = stack;
+    this.refreshRecentsStack();
+  }
+
+  _teardownRecentsStack() {
+    this.recentsStack?.pile?.destroy();
+    this.recentsStack = null;
+  }
+
+  // the Recents item is a plain launcher entry: clicking it opens the stack
+  _createRecentsApp() {
+    let icon =
+      this.extension.lookup_icon_from_names([
+        'folder-recent',
+        'document-open-recent',
+      ]) ?? 'folder';
+    let content = `[Desktop Entry]\nVersion=1.0\nTerminal=false\nType=Application\nName=Recents\nExec=true\nIcon=${icon}\nStartupWMClass=recents-hyperdock\n`;
+    return this._createAppInfoFromData(content);
+  }
+
+  // the icon file of a themed name, for the pile renderer
+  _iconFile(name) {
+    return (
+      this.extension.icon_theme?.lookup_icon(name, 128, 0)?.get_filename?.() ??
+      null
+    );
+  }
+
+  refreshRecentsStack() {
+    let stack = this.recentsStack;
+    if (!stack) return;
+    let items = recentItems(this.extension.recentDockApps(), (name) =>
+      this._iconFile(name)
+    );
+    // app state changes all the time; redraw only when the list did change
+    let signature = items.map((item) => item.name).join('\n');
+    if (signature === stack.signature) return;
+    stack.signature = signature;
+    stack.files = items;
+    stack.total = items.length;
+    this._renderPile(stack);
+    stack.fileListeners?.forEach((listener) => listener());
+  }
+
+  // "Display as Stack": draw the pile of the newest items off the main loop;
+  // its arrival notifies the stack's docks like a new file list does
+  _renderPile(stack) {
+    if (stack.display !== 'stack' || !stack.files?.length) return;
+    stack.pile ??= new StackPile(this.extension.path, () =>
+      stack.fileListeners?.forEach((listener) => listener())
+    );
+    stack.pile.render(pileLayers(stack.files, (item) => item.iconFile));
   }
 
   _teardownFolderStacks() {
@@ -363,8 +419,10 @@ export const Services = class {
       stack.monitor = null;
       this.extension._loTimer?.cancel(stack.checkSeq);
       stack.checkSeq = null;
+      stack.pile?.destroy();
     });
     this.folderStacks = [];
+    this._teardownRecentsStack();
   }
 
   _folderDisplayName(dir) {
@@ -952,11 +1010,16 @@ export const Services = class {
   }
 
   async checkFolderStack(stack) {
+    if (stack.isRecents) {
+      this.refreshRecentsStack();
+      return;
+    }
     try {
       [stack.files, stack.total] = await this.checkRecentFilesInFolder(
         stack.path,
         stack.sort
       );
+      this._renderPile(stack);
       stack.fileListeners?.forEach((listener) => listener());
     } catch (err) {
       if (

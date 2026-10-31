@@ -46,14 +46,46 @@
           </object>
         </child>
         <child>
-          <object class="AdwActionRow">
+          <object class="AdwSpinRow" id="recent-apps-count">
             <property name="title" translatable="yes">Recent Apps</property>
-            <property name="subtitle" translatable="yes">Show recently closed apps that are not pinned in their own section after the running apps, as macOS "Show suggested and recent apps in Dock". Remove one with right-click, Remove from Dock.</property>
-            <property name="activatable-widget">recent-apps-count</property>
+            <property name="subtitle" translatable="yes">How many recently closed apps the Recents stack lists. It stands first in the group with Downloads, Screenshots and the Trash. 0 hides it.</property>
+            <property name="adjustment">recent-apps-count-adjust</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwActionRow">
+            <property name="title" translatable="yes">Recents View</property>
+            <property name="subtitle" translatable="yes">Open the Recents stack as a fan, a grid, a list, or automatically.</property>
+            <property name="activatable-widget">recents-stack-view</property>
             <child>
-              <object class="GtkDropDown" id="recent-apps-count">
+              <object class="GtkDropDown" id="recents-stack-view">
                 <property name="valign">center</property>
-                <property name="model">recent-apps-count-model</property>
+                <property name="model">downloads-stack-view-model</property>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="AdwActionRow">
+            <property name="title" translatable="yes">Recents Display As</property>
+            <property name="subtitle" translatable="yes">Show a plain icon, or a pile of the most recent apps.</property>
+            <property name="activatable-widget">recents-stack-display</property>
+            <child>
+              <object class="GtkDropDown" id="recents-stack-display">
+                <property name="valign">center</property>
+                <property name="model">recents-stack-display-model</property>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="AdwActionRow">
+            <property name="title" translatable="yes">Screenshots Stack</property>
+            <property name="subtitle" translatable="yes">Show a stack for the folder screenshots are saved to, next to Downloads.</property>
+            <property name="activatable-widget">screenshots-icon</property>
+            <child>
+              <object class="GtkSwitch" id="screenshots-icon">
+                <property name="valign">center</property>
               </object>
             </child>
           </object>
@@ -352,6 +384,19 @@
           </object>
         </child>
         <child>
+          <object class="AdwActionRow">
+            <property name="title" translatable="yes">Downloads Group By</property>
+            <property name="subtitle" translatable="yes">Batch the files of the Downloads grid and list under headers: by date or by kind.</property>
+            <property name="activatable-widget">downloads-stack-group</property>
+            <child>
+              <object class="GtkDropDown" id="downloads-stack-group">
+                <property name="valign">center</property>
+                <property name="model">downloads-stack-group-model</property>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
           <object class="AdwExpanderRow" id="folder-stacks-row">
             <property name="title" translatable="yes">Folder Stacks</property>
             <property name="subtitle" translatable="yes">More folders shown as stacks next to Downloads. Right-click a stack in the dock for its sort order, icon and view.</property>
@@ -475,15 +520,12 @@
       <item translatable="yes">New Window</item>
     </items>
   </object>
-  <object class="GtkStringList" id="recent-apps-count-model">
-    <items>
-      <item translatable="yes">Off</item>
-      <item>1</item>
-      <item>2</item>
-      <item>3</item>
-      <item>4</item>
-      <item>5</item>
-    </items>
+  <object class="GtkAdjustment" id="recent-apps-count-adjust">
+    <property name="lower">0</property>
+    <property name="upper">50</property>
+    <property name="step-increment">1</property>
+    <property name="page-increment">5</property>
+    <property name="value">20</property>
   </object>
   <object class="GtkStringList" id="downloads-stack-view-model">
     <items>
@@ -505,6 +547,19 @@
   <object class="GtkStringList" id="downloads-stack-display-model">
     <items>
       <item translatable="yes">Folder</item>
+      <item translatable="yes">Stack</item>
+    </items>
+  </object>
+  <object class="GtkStringList" id="downloads-stack-group-model">
+    <items>
+      <item translatable="yes">None</item>
+      <item translatable="yes">Date</item>
+      <item translatable="yes">Kind</item>
+    </items>
+  </object>
+  <object class="GtkStringList" id="recents-stack-display-model">
+    <items>
+      <item translatable="yes">Plain icon</item>
       <item translatable="yes">Stack</item>
     </items>
   </object>

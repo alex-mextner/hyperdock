@@ -1,7 +1,7 @@
 'use strict';
 
 // macOS dock interactions that GNOME's Dash lacks, one instance per Dock:
-//  - drag-off-remove: drag a pinned or recent icon off the dock and hold it
+//  - drag-off-remove: drag a pinned icon off the dock and hold it
 //    there to unpin it ("Remove" label near the pointer, poof on drop);
 //  - background-menu: right-click on the dock background/separator opens
 //    Hiding / Magnification / Position / Dock Settings;
@@ -112,7 +112,6 @@ export class DockInteractions {
       // the overview has its own drop targets (workspaces launch the app)
       overviewOpen: Main.overview.visible,
       pinned: !!app && Fav.getAppFavorites().isFavorite(app.get_id()),
-      recent: !!app && this.extension.recentDockApps().includes(app),
     });
     if (!kind) return;
     // the dock does not move during a drag: measure it once
@@ -202,8 +201,6 @@ export class DockInteractions {
       return DND.DragDropResult.CONTINUE;
     }
     let id = this._dragApp.get_id();
-    let unpin = this._removal === 'unpin';
-    let extension = this.extension;
     // the drop is then cancelled by DND; hiding the actor turns the
     // snap-back into an invisible no-op instead of a fly-home
     dropEvent.dropActor?.hide();
@@ -211,11 +208,7 @@ export class DockInteractions {
     // like Shell's Show Apps drop: unpin after the drop has been processed,
     // so the dash does not rebuild under the running drag code
     global.compositor.get_laters().add(Meta.LaterType.BEFORE_REDRAW, () => {
-      if (unpin) {
-        Fav.getAppFavorites().removeFavorite(id);
-      } else {
-        extension.forgetRecentApp(id);
-      }
+      Fav.getAppFavorites().removeFavorite(id);
       return GLib.SOURCE_REMOVE;
     });
     console.log(`d2da: drag-off removed ${id}`);

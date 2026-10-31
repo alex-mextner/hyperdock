@@ -1,6 +1,6 @@
 'use strict';
 
-// Rules of the dock's "recent apps" section, free of gi:// imports so
+// Rules of the dock's Recents stack, free of gi:// imports so
 // tests/recent_apps_check.js can run them under plain node. extension.js owns
 // the dconf list and the Shell lookups and passes them in as callbacks.
 
@@ -25,12 +25,6 @@ export function rememberRecent(ids, id, kept) {
   let next = ids.filter((i) => canonicalId(i) !== canonical);
   next.unshift(canonical);
   return next.slice(0, kept);
-}
-
-// The list without `id` (and without the spelling that shows as the same icon)
-export function forgetRecent(ids, id) {
-  let canonical = canonicalId(id);
-  return ids.filter((i) => canonicalId(i) !== canonical);
 }
 
 // Daemons and helpers (NoDisplay) never belong in the dock, except Settings
@@ -59,16 +53,4 @@ export function pickRecents(ids, { count, isFavorite, resolve }) {
     if (apps.length >= count) break;
   }
   return apps;
-}
-
-// Where the recents' own separator goes, given what the Dash box holds in
-// order, as 'favorite' | 'running' | 'recent' per app item: the index of the
-// first of the trailing recents, or -1 when no separator is needed. The Shell
-// puts its own separator after the favorites, so one is only missing between
-// running apps and recents.
-export function recentSeparatorIndex(kinds) {
-  let first = kinds.length;
-  while (first > 0 && kinds[first - 1] === 'recent') first--;
-  if (first === kinds.length || first === 0) return -1;
-  return kinds[first - 1] === 'running' ? first : -1;
 }

@@ -19,15 +19,12 @@ import { GlassPlatter } from './effects/glass.js';
 import { DockInteractions } from './interactions.js';
 
 import { DockIcon, DockItemContainer, DockBackground } from './dockItems.js';
-import { DockItemList } from './dockItemMenu.js';
-import { setupStackItem } from './stackPanel.js';
 import { AutoHide } from './autohide.js';
 import { Animator } from './animator.js';
 import { live } from './probe.js';
 import { get_distance_sqr, get_distance, isInRect, isOverlapRect } from './utils.js';
 import { syncOpenAtLogin, hideOpenAtLogin } from './openAtLogin.js';
-import { syncRemoveFromDockItem } from './removeFromDock.js';
-import { recentSeparatorIndex } from './recentApps.js';
+import { orderExtraIcons, syncFolderStacks, syncRecentsStack } from './stackDock.js';
 import { computeIconMetrics } from './iconMetrics.js';
 import {
   filterDashRunningApps,
@@ -239,7 +236,6 @@ export let Dock = GObject.registerClass(
         this.dash = null;
         this._extraIcons = null;
         this._separator = null;
-        this._recentsSeparator = null;
         this._icons = null;
         this._dashItems = [];
         this._separators = [];
@@ -250,7 +246,7 @@ export let Dock = GObject.registerClass(
         this._dragged = null;
         this._dragging = false;
         this._trashIcon = null;
-        this._recentFilesIcon = null;
+        this._recentsIcon = null;
         this._folderIcons = null;
       }
     }
@@ -262,58 +258,11 @@ export let Dock = GObject.registerClass(
       this.add_child(this.createDash());
       this._icons = null;
       this._trashIcon = null;
-      this._recentFilesIcon = null;
+      this._recentsIcon = null;
       this._folderIcons = null;
       this._needsLayout = true;
       this.relayout(true);
       this._beginAnimation();
-    }
-
-    // The Shell Dash puts one separator after the favorites; the recents
-    // section (pinned | running | recents) gets its own after the running
-    // apps. Runs before the items are inspected: placing the separator
-    // makes the box emit child-added/child-removed, which drops the cache.
-    _syncRecentsSeparator(dashBox) {
-      let recents = this.extension.favorites_only
-        ? []
-        : this.extension.recentDockApps();
-      let favorites = Fav.getAppFavorites();
-      let items = [];
-      let kinds = [];
-      dashBox?.get_children().forEach((c) => {
-        let app = c.child?.app;
-        if (!app || c.animatingOut) return;
-        items.push(c);
-        if (recents.includes(app)) {
-          kinds.push('recent');
-        } else {
-          kinds.push(favorites.isFavorite(app.get_id()) ? 'favorite' : 'running');
-        }
-      });
-
-      let at = recentSeparatorIndex(kinds);
-      if (at < 0) {
-        this._recentsSeparator?.destroy();
-        return;
-      }
-      if (!this._recentsSeparator) {
-        let separator = new St.Widget({
-          name: 'd2daRecentsSeparator',
-          style_class: 'dash-separator',
-          y_align: Clutter.ActorAlign.CENTER,
-          height: this.dash.iconSize,
-        });
-        separator.connect('destroy', () => {
-          if (this._recentsSeparator === separator) {
-            this._recentsSeparator = null;
-          }
-        });
-        this._recentsSeparator = separator;
-        dashBox.add_child(separator);
-      }
-      if (items[at].get_previous_sibling() !== this._recentsSeparator) {
-        dashBox.set_child_below_sibling(this._recentsSeparator, items[at]);
-      }
     }
 
     createItem(appOrPath, id) {
@@ -644,21 +593,6 @@ export let Dock = GObject.registerClass(
       Compat.setupDashProxy(dash);
       filterDashRunningApps(dash, () => this.extension.isolate_workspaces);
 
-      // Dash._redisplay() reads only get_running() from _appSystem (its
-      // signals are connected already): appending the recent apps there
-      // gives them real AppIcons after the running ones (_syncRecentsSeparator
-      // splits them off), and they turn into running icons on launch by themselves
-      let appSystem = dash._appSystem;
-      if (appSystem) {
-        dash._appSystem = {
-          get_running: () => {
-            let running = appSystem.get_running();
-            let recent = this.extension.recentDockApps();
-            return recent.length ? running.concat(recent) : running;
-          },
-        };
-      }
-
       this.dash = dash;
       this._updateKeyboardFocus();
       let dashBg = Compat.getDashBackground(this.dash);
@@ -842,7 +776,6 @@ export let Dock = GObject.registerClass(
           apps += runningApps(this.extension.isolate_workspaces).filter(
             (app) => !(app.get_id() in favorites)
           ).length;
-          apps += this.extension.recentDockApps().length;
         }
       } catch {
         // fall back to the actors found
@@ -1057,7 +990,6 @@ export let Dock = GObject.registerClass(
         this._favorite_ids = Compat.getFavoriteAppIds(Fav.getAppFavorites());
       }
 
-      this._syncRecentsSeparator(dashBox);
       this._boxIconsLength = dashBox?.get_children().length ?? 0;
 
       this._dashItems = [];
@@ -1073,16 +1005,10 @@ export let Dock = GObject.registerClass(
 
       // hack: sometimes the Dash creates more than one separator
       // workaround - remove all of its separators in such situation
-      // (the recents separator is ours: one at most, placed by us)
       //! pinpoint the cause of the errors
-      let shellSeparators = this._separators.filter(
-        (s) => s !== this._recentsSeparator
-      );
-      if (shellSeparators.length > 1) {
-        shellSeparators.forEach((s) => dashBox?.remove_child(s));
-        this._separators = this._separators.filter(
-          (s) => !shellSeparators.includes(s)
-        );
+      if (this._separators.length > 1) {
+        this._separators.forEach((s) => dashBox?.remove_child(s));
+        this._separators = [];
       }
 
       this._syncSeparatorVisibility();
@@ -1304,15 +1230,6 @@ export let Dock = GObject.registerClass(
         } catch (e) {
           console.error('d2da: show all windows item', e);
         }
-        try {
-          syncRemoveFromDockItem(
-            appwell,
-            (app) => this.extension.recentDockApps().includes(app),
-            (app) => this.extension.forgetRecentApp(app.get_id())
-          );
-        } catch (e) {
-          console.error('d2da: remove from dock item', e);
-        }
         return ret;
       };
     }
@@ -1375,11 +1292,13 @@ export let Dock = GObject.registerClass(
       }
       // check these intermittently!
       this._syncMountIcons();
-      this._syncRecentFilesIcon();
-      this._syncFolderStackIcons();
+      syncRecentsStack(this);
+      syncFolderStacks(this);
       this._syncTrashIcon();
       // minimized-window tiles, between the stacks and the Trash
       this._minimizedTiles = syncMinimizedTiles(this, this._minimizedTiles);
+      // Recents, Downloads, Screenshots, the tiles and the Trash: one group
+      orderExtraIcons(this);
     }
 
     // the mount icons
@@ -1411,77 +1330,6 @@ export let Dock = GObject.registerClass(
           this._icons = null;
           this._needsLayout = true;
         }
-      });
-    }
-
-    // the recent files icon (not ready: never shown)
-    _syncRecentFilesIcon() {
-      let services = this.extension.services;
-      let recents = {
-        icon: '_recentFilesIcon',
-        folder: 'recent:///',
-        //! find a way to avoid this
-        path: `${this.extension.path}/apps/recents-hyperdock.desktop`,
-        // not ready for prime time
-        show: false, // this.extension.documents_icon,
-        prepare: () => services.checkRecents(),
-        files: () => services._recentFiles,
-        total: () => services._recentFilesLength,
-      };
-      if (!this[recents.icon] && recents.show) {
-        this[recents.icon] = DockItemList.createItem(this, recents);
-        this._icons = null;
-        this._needsLayout = true;
-      } else if (this[recents.icon] && !recents.show) {
-        this._destroyList();
-        this[recents.icon].destroy();
-        this[recents.icon] = null;
-        this._icons = null;
-        this._needsLayout = true;
-      }
-    }
-
-    // the folder stacks: Downloads + the folder-stacks setting
-    _syncFolderStackIcons() {
-      let services = this.extension.services;
-      let stacks = (services?.folderStacks ?? []).filter(
-        (s) => !s.isDownloads || this.extension.downloads_icon
-      );
-      this._folderIcons = this._folderIcons ?? new Map();
-      // services rebuilds stack objects on settings changes; drop stale items
-      this._folderIcons.forEach((item, key) => {
-        if (stacks.includes(item._folderStack)) {
-          return;
-        }
-        // the list may be showing this stack's files
-        if (this._list?._target === item) {
-          this._destroyList();
-        }
-        item.destroy();
-        this._folderIcons.delete(key);
-        this._icons = null;
-        this._needsLayout = true;
-      });
-      stacks.forEach((stack) => {
-        if (this._folderIcons.has(stack.key)) {
-          return;
-        }
-        let item = DockItemList.createItem(this, {
-          icon: `_folderStack:${stack.key}`,
-          folder: stack.path,
-          path: stack.app,
-          stack,
-          prepare: () => services.checkFolderStack(stack),
-          files: () => stack.files,
-          total: () => stack.total,
-        });
-        item._folderStack = stack;
-        // registered first: anything setup triggers that relayouts this dock
-        // must find the item instead of creating it again
-        this._folderIcons.set(stack.key, item);
-        setupStackItem(this, item, stack);
-        this._icons = null;
-        this._needsLayout = true;
       });
     }
 

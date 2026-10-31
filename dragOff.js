@@ -26,13 +26,10 @@ export function isOutside(rect, margin, x, y) {
   );
 }
 
-// What letting go of a dragged dock icon does: 'unpin' a pinned app, 'forget'
-// a recent one, nothing (null) for the rest. The overview has drop targets of
-// its own.
-export function removalKind({ enabled, overviewOpen, pinned, recent }) {
-  if (!enabled || overviewOpen) return null;
-  if (pinned) return 'unpin';
-  return recent ? 'forget' : null;
+// What letting go of a dragged dock icon does: 'unpin' a pinned app, nothing
+// (null) for the rest. The overview has drop targets of its own.
+export function removalKind({ enabled, overviewOpen, pinned }) {
+  return enabled && !overviewOpen && pinned ? 'unpin' : null;
 }
 
 export let DragOffGesture = class {

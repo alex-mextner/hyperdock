@@ -29,7 +29,7 @@
 #                        (stage delta excluded due to run-to-run noise outside the extension),
 #                        if probe line counts != TOGGLES+1/TOGGLES, or if
 #                        shutdown criticals > 0
-#   D2DA_PROBE_SCENARIO  'recents', 'layout', 'width' (comma separated):
+#   D2DA_PROBE_SCENARIO  'layout', 'width', 'widgets', 'stacks' (comma separated):
 #                        scripted checks run inside the
 #                        shell by probeScenarios.js (isolated mode,
 #                        D2DA_PROBE=1); every "ok":false fails the run. The

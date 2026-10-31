@@ -22,37 +22,33 @@ import St from 'gi://St';
 import { GlassPlatter } from './effects/glass.js';
 import { trySpawnCommandLine } from './utils.js';
 import { smoothScaling } from './textureFilters.js';
+import {
+  PANEL,
+  STACK_DISPLAYS,
+  STACK_DISPLAY_LABELS,
+  STACK_GROUPS,
+  STACK_GROUP_LABELS,
+  STACK_SORTS,
+  STACK_SORT_LABELS,
+  STACK_VIEWS,
+  STACK_VIEW_LABELS,
+  contentSize,
+  groupItems,
+  pick,
+} from './stackModel.js';
+import { anchorFor, clamp, directionFor, isVertical, originFor } from './stackGeometry.js';
 
-// index order = the int value of the downloads-stack-* settings; index 0 is the
-// upstream behaviour
-export const STACK_VIEWS = ['fan', 'grid', 'list', 'automatic'];
-export const STACK_SORTS = [
-  'date-modified',
-  'name',
-  'date-added',
-  'date-created',
-  'kind',
-];
-export const STACK_DISPLAYS = ['folder', 'stack'];
-
-export const STACK_VIEW_LABELS = {
-  fan: 'Fan',
-  grid: 'Grid',
-  list: 'List',
-  automatic: 'Automatic',
+export {
+  STACK_VIEWS,
+  STACK_SORTS,
+  STACK_DISPLAYS,
+  STACK_GROUPS,
+  STACK_VIEW_LABELS,
+  STACK_SORT_LABELS,
+  STACK_DISPLAY_LABELS,
+  STACK_GROUP_LABELS,
+  pick,
 };
-export const STACK_SORT_LABELS = {
-  name: 'Name',
-  'date-added': 'Date Added',
-  'date-modified': 'Date Modified',
-  'date-created': 'Date Created',
-  kind: 'Kind',
-};
-export const STACK_DISPLAY_LABELS = { folder: 'Folder', stack: 'Stack' };
-
-export function pick(value, choices) {
-  return choices.includes(value) ? value : choices[0];
-}
 
 // largest images decoded directly when no thumbnail exists yet
 const MAX_PREVIEW_BYTES = 16 * 1024 * 1024;
@@ -90,7 +86,7 @@ export function stackGicon(item) {
   if (!item) return null;
   let preview = previewFile(item);
   if (preview) return new Gio.FileIcon({ file: preview });
-  return item.fileInfo?.get_icon?.() ?? null;
+  return item.gicon ?? item.fileInfo?.get_icon?.() ?? null;
 }
 
 function openCommand(item, fileExplorer) {
@@ -100,31 +96,55 @@ function openCommand(item, fileExplorer) {
   return `xdg-open ${GLib.shell_quote(item.path)}`;
 }
 
-// Persist one option of a stack: Downloads has its own int keys, the other
-// stacks keep theirs in their folder-stacks JSON entry. The write rebuilds the
-// stacks (and this item with its menu), so it runs after the menu activation
-// has finished instead of under it.
+// The int setting that stores an option of the Downloads or Recents stack;
+// null for the stacks kept in the folder-stacks JSON.
+function intKeyFor(stack, field) {
+  if (stack.isDownloads) return `downloads-stack-${field}`;
+  if (stack.isRecents) return `recents-stack-${field}`;
+  return null;
+}
+
+// The folder-stacks entries with one option of `stack` changed. A stack that
+// is not listed there yet (the built-in Screenshots one) is appended with its
+// current options, which is also what makes the entry take it over.
+export function withStackOption(entries, stack, field, value) {
+  let index = stack.entryIndex;
+  if (index === undefined) {
+    let { path, view, sort, display, group } = stack;
+    return [...entries, { path, view, sort, display, group, [field]: value }];
+  }
+  let entry = entries[index];
+  if (entry === undefined) return entries;
+  let next = [...entries];
+  next[index] = { ...(typeof entry === 'string' ? { path: entry } : entry), [field]: value };
+  return next;
+}
+
+function saveFolderEntry(settings, stack, field, value) {
+  let entries;
+  try {
+    entries = JSON.parse(settings.get_string('folder-stacks'));
+  } catch {
+    return;
+  }
+  let next = withStackOption(entries, stack, field, value);
+  if (next !== entries) settings.set_string('folder-stacks', JSON.stringify(next));
+}
+
+// Persist one option of a stack: Downloads and Recents have their own int
+// keys, the other stacks keep theirs in their folder-stacks JSON entry. The
+// write rebuilds the stacks (and this item with its menu), so it runs after
+// the menu activation has finished instead of under it.
 function saveStackOption(extension, stack, field, value, choices) {
   GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
     let settings = extension._settings;
     if (!settings) return GLib.SOURCE_REMOVE;
-    if (stack.isDownloads) {
-      settings.set_int(`downloads-stack-${field}`, choices.indexOf(value));
-      return GLib.SOURCE_REMOVE;
+    let key = intKeyFor(stack, field);
+    if (key) {
+      settings.set_int(key, choices.indexOf(value));
+    } else {
+      saveFolderEntry(settings, stack, field, value);
     }
-    let entries;
-    try {
-      entries = JSON.parse(settings.get_string('folder-stacks'));
-    } catch {
-      return GLib.SOURCE_REMOVE;
-    }
-    let entry = entries[stack.entryIndex];
-    if (entry === undefined) return GLib.SOURCE_REMOVE;
-    entries[stack.entryIndex] = {
-      ...(typeof entry === 'string' ? { path: entry } : entry),
-      [field]: value,
-    };
-    settings.set_string('folder-stacks', JSON.stringify(entries));
     return GLib.SOURCE_REMOVE;
   });
 }
@@ -142,34 +162,53 @@ function addRadioSubmenu(menu, title, current, choices, labels, onPick) {
   menu.addMenuItem(sub);
 }
 
-// The macOS stack context menu (Sort by, Display as, View content as,
-// Open "<Title>") on a stack's dock item, and its "Display as Stack" icon.
-export function setupStackItem(dock, item, stack) {
-  let extension = dock.extension;
-  let menu = item._menu;
-  if (menu) {
-    let open = menu._newWindowItem;
-    if (open) open.label.text = `Open "${stack.title}"`;
-    let save = (field, choices) => (value) =>
-      saveStackOption(extension, stack, field, value, choices);
-    let first = new PopupMenu.PopupSeparatorMenuItem();
-    menu.addMenuItem(first, 0);
+const RECENTS_DISPLAY_LABELS = { folder: 'Plain icon', stack: 'Stack' };
+
+// The macOS stack context menu (Sort by, Display as, View content as, Group
+// by, Open "<Title>") on a stack's dock item; Recents lists apps, so it has
+// no folder to open, sort or group and gets Clear Recents instead.
+function addStackMenu(extension, menu, stack) {
+  if (!menu) return;
+  let open = menu._newWindowItem;
+  if (stack.isRecents) {
+    open?.destroy();
+    open = null;
+  } else if (open) {
+    open.label.text = `Open "${stack.title}"`;
+  }
+  let save = (field, choices) => (value) =>
+    saveStackOption(extension, stack, field, value, choices);
+  let first = new PopupMenu.PopupSeparatorMenuItem();
+  menu.addMenuItem(first, 0);
+  if (!stack.isRecents) {
     addRadioSubmenu(menu, 'Sort by', stack.sort,
       ['name', 'date-added', 'date-modified', 'date-created', 'kind'],
       STACK_SORT_LABELS, save('sort', STACK_SORTS));
-    addRadioSubmenu(menu, 'Display as', stack.display, STACK_DISPLAYS,
-      STACK_DISPLAY_LABELS, save('display', STACK_DISPLAYS));
-    addRadioSubmenu(menu, 'View content as', stack.view, STACK_VIEWS,
-      STACK_VIEW_LABELS, save('view', STACK_VIEWS));
-    // macOS lists the options first and the Open item last
-    menu.moveMenuItem(first, menu.numMenuItems - 1);
-    if (open) menu.moveMenuItem(open, menu.numMenuItems - 1);
   }
+  addRadioSubmenu(menu, 'Display as', stack.display, STACK_DISPLAYS,
+    stack.isRecents ? RECENTS_DISPLAY_LABELS : STACK_DISPLAY_LABELS,
+    save('display', STACK_DISPLAYS));
+  addRadioSubmenu(menu, 'View content as', stack.view, STACK_VIEWS,
+    STACK_VIEW_LABELS, save('view', STACK_VIEWS));
+  if (!stack.isRecents) {
+    addRadioSubmenu(menu, 'Group by', stack.group, STACK_GROUPS,
+      STACK_GROUP_LABELS, save('group', STACK_GROUPS));
+  }
+  // macOS lists the options first and the Open item last
+  menu.moveMenuItem(first, menu.numMenuItems - 1);
+  if (open) menu.moveMenuItem(open, menu.numMenuItems - 1);
+  if (stack.isRecents) menu.addAction('Clear Recents', () => extension.clearRecentApps());
+}
 
-  if (stack.display !== 'stack') return;
+// "Display as Stack": the dock icon is the rendered pile of the newest items
+// (stack.pile, drawn off the shell's main loop), the top item's own icon
+// until the first pile arrives.
+function bindPile(dock, item, stack) {
+  let extension = dock.extension;
   let dashIcon = item.child;
   let applyDisplay = () => {
-    dashIcon?.setStackGicon?.(stackGicon(stack.files?.[0]));
+    let pile = stack.files?.length ? stack.pile?.gicon : null;
+    dashIcon?.setStackGicon?.(pile ?? stackGicon(stack.files?.[0]));
     // The renderer copies the icon's gicon on its next frame, so starting
     // the animation is enough. A refresh would relayout synchronously, and
     // as this also runs while a relayout creates the item, that recursed.
@@ -182,15 +221,15 @@ export function setupStackItem(dock, item, stack) {
   if (stack.files) applyDisplay();
 }
 
-const GRID_COLUMNS = 5;
-const GRID_CELL = 96;
-const GRID_THUMB = 64;
-const LIST_THUMB = 24;
-const MAX_ROWS_VISIBLE = 4;
-const LIST_ROW = 36;
-const LIST_ROWS_VISIBLE = 12;
+export function setupStackItem(dock, item, stack) {
+  addStackMenu(dock.extension, item._menu, stack);
+  if (stack.display === 'stack') bindPile(dock, item, stack);
+}
+
 const LIST_ROW_STYLE = 'border-radius: 8px; padding: 4px 8px;';
 const HOVER = 'background-color: rgba(255,255,255,0.16);';
+const HEADER_STYLE =
+  'font-weight: bold; font-size: 9pt; color: rgba(255,255,255,0.62); padding: 6px 8px 2px 8px;';
 
 // popover geometry, logical px
 const PANEL_RADIUS = 16;
@@ -210,12 +249,16 @@ const OPEN_MS = 220;
 const CLOSE_MS = 160;
 const START_SCALE = 0.2;
 
-function clamp(v, lo, hi) {
-  return Math.max(lo, Math.min(v, hi));
+// Whether a button press whose source actor is `source` lands outside the
+// popover (and so closes the panel).
+export function pressClosesPanel(popover, source) {
+  return !(source && popover.contains(source));
 }
 
 // A full-monitor transparent backdrop (a click outside closes, as in macOS)
-// holding the popover beside the dock.
+// holding the popover beside the dock. `files` are the stack's items in its
+// own order; they are listed in batches (Today, Yesterday, ... or by kind)
+// when the stack's `group` says so.
 export const StackPanel = GObject.registerClass(
   {},
   class StackPanel extends St.Widget {
@@ -231,8 +274,28 @@ export const StackPanel = GObject.registerClass(
       this.dock = dock;
       this._target = target;
       this._fileExplorer = dock.extension.file_explorer();
+      this._scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+      this._connectBackdrop();
+      this._buildPopover(stack, files, view);
 
-      this.connect('button-press-event', () => {
+      Main.uiGroup.add_child(this);
+      this._place();
+      // modal like a real popup: Escape reaches us and a click anywhere else
+      // lands on the backdrop and closes the panel
+      this._grab = Main.pushModal(this);
+      this.grab_key_focus();
+      this._animateIn();
+    }
+
+    // A click outside the popover closes the panel. A press on the popover
+    // is left unhandled: GNOME 50's St.Button is a click gesture that is
+    // cancelled when an ancestor handles (stops) the press, so a STOP here
+    // made every file in the panel unclickable.
+    _connectBackdrop() {
+      this.connect('button-press-event', (actor, evt) => {
+        if (!pressClosesPanel(this._popover, global.stage.get_event_actor(evt))) {
+          return Clutter.EVENT_PROPAGATE;
+        }
         this.close();
         return Clutter.EVENT_STOP;
       });
@@ -243,13 +306,11 @@ export const StackPanel = GObject.registerClass(
         }
         return Clutter.EVENT_PROPAGATE;
       });
+    }
 
-      let scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
-      this._scale = scale;
+    _buildPopover(stack, files, view) {
       // the background, the content above it; both scale from the pointer
       this._popover = new St.Widget({ reactive: true });
-      // clicks inside the panel do not reach the backdrop
-      this._popover.connect('button-press-event', () => Clutter.EVENT_STOP);
       this.add_child(this._popover);
       this._glass = new GlassPlatter();
       this._popover.add_child(this._glass);
@@ -259,7 +320,6 @@ export const StackPanel = GObject.registerClass(
         style: 'padding: 10px;',
       });
       this._popover.add_child(this._panel);
-
       this._panel.add_child(
         new St.Label({
           text: stack.title,
@@ -267,50 +327,56 @@ export const StackPanel = GObject.registerClass(
           x_align: Clutter.ActorAlign.CENTER,
         })
       );
+      let groups = groupItems(files, stack.group ?? 'none', { sort: stack.sort });
+      this._scroll = this._buildScroll(groups, view);
+      this._panel.add_child(this._scroll);
+      if (stack.path) this._panel.add_child(this._openButton(stack));
+    }
 
+    _buildScroll(groups, view) {
       let scroll = new St.ScrollView({
         hscrollbar_policy: St.PolicyType.NEVER,
         vscrollbar_policy: St.PolicyType.AUTOMATIC,
         overlay_scrollbars: true,
       });
-      this._scroll = scroll;
-      let content;
-      if (view === 'list') {
-        content = new St.BoxLayout({
-          orientation: Clutter.Orientation.VERTICAL,
-        });
-        files.forEach((f) => content.add_child(this._listRow(f, scale)));
-        let rows = Math.min(files.length, LIST_ROWS_VISIBLE);
-        scroll.set_size(300 * scale, rows * LIST_ROW * scale);
-      } else {
-        let grid = new Clutter.GridLayout({
-          column_homogeneous: true,
-          row_homogeneous: true,
-        });
-        // St.ScrollView needs an St.Scrollable child
-        content = new St.Viewport({ layout_manager: grid });
-        files.forEach((f, i) =>
-          grid.attach(
-            this._gridCell(f, scale),
-            i % GRID_COLUMNS,
-            Math.floor(i / GRID_COLUMNS),
-            1,
-            1
-          )
-        );
-        let cols = Math.min(files.length, GRID_COLUMNS);
-        let rows = Math.min(
-          Math.ceil(files.length / GRID_COLUMNS),
-          MAX_ROWS_VISIBLE
-        );
-        scroll.set_size(
-          cols * GRID_CELL * scale,
-          rows * (GRID_CELL + 12) * scale
-        );
-      }
+      let content = new St.BoxLayout({ orientation: Clutter.Orientation.VERTICAL });
+      groups.forEach((group) => {
+        if (group.title) {
+          content.add_child(new St.Label({ text: group.title, style: HEADER_STYLE }));
+        }
+        content.add_child(view === 'list' ? this._listBatch(group) : this._gridBatch(group));
+      });
       scroll.set_child(content);
-      this._panel.add_child(scroll);
+      let size = contentSize(groups, view);
+      scroll.set_size(size.width * this._scale, size.height * this._scale);
+      return scroll;
+    }
 
+    _gridBatch(group) {
+      let grid = new Clutter.GridLayout({
+        column_homogeneous: true,
+        row_homogeneous: true,
+      });
+      let batch = new St.Widget({ layout_manager: grid });
+      group.items.forEach((f, i) =>
+        grid.attach(
+          this._gridCell(f),
+          i % PANEL.GRID_COLUMNS,
+          Math.floor(i / PANEL.GRID_COLUMNS),
+          1,
+          1
+        )
+      );
+      return batch;
+    }
+
+    _listBatch(group) {
+      let rows = new St.BoxLayout({ orientation: Clutter.Orientation.VERTICAL });
+      group.items.forEach((f) => rows.add_child(this._listRow(f)));
+      return rows;
+    }
+
+    _openButton(stack) {
       let open = new St.Button({
         label: 'Open in Files',
         style_class: 'button',
@@ -318,19 +384,12 @@ export const StackPanel = GObject.registerClass(
         style: 'margin-top: 8px;',
       });
       open.connect('clicked', () =>
-        this._spawn(
-          `${this._fileExplorer} ${GLib.shell_quote(stack.path)}`
-        )
+        this._spawn(`${this._fileExplorer} ${GLib.shell_quote(stack.path)}`)
       );
-      this._panel.add_child(open);
+      return open;
+    }
 
-      Main.uiGroup.add_child(this);
-      this._place();
-      // modal like a real popup: Escape reaches us and a click anywhere else
-      // lands on the backdrop and closes the panel
-      this._grab = Main.pushModal(this);
-      this.grab_key_focus();
-
+    _animateIn() {
       this._popover.set_scale(START_SCALE, START_SCALE);
       this._popover.opacity = 0;
       this._popover.ease({
@@ -347,97 +406,78 @@ export const StackPanel = GObject.registerClass(
     // stack's icon but kept on the work area; the pointer follows the icon.
     _place() {
       let dock = this.dock;
-      let m = dock._monitor;
-      let wa = Main.layoutManager.getWorkAreaForMonitor(dock._monitorIndex);
       let s = this._scale;
-      let depth = NOTCH_DEPTH * s;
-      let gap = DOCK_GAP * s;
-      let margin = SCREEN_MARGIN * s;
+      let sizes = { gap: DOCK_GAP * s, depth: NOTCH_DEPTH * s, margin: SCREEN_MARGIN * s };
       let glassOn = dock.extension.glass_material;
       this._radius = (glassOn ? PANEL_RADIUS : FLAT_RADIUS) * s;
-
-      // the dock's edge is its background's, so the panel never covers it
-      let [bx, by] = dock._background.get_transformed_position();
-      let [bw, bh] = dock._background.get_transformed_size();
-      let [cx, cy] = this._iconCenter();
-
       let pos = dock._position;
-      let vertical = pos === 'left' || pos === 'right';
-      // room between the pointer's base and the far screen edge
-      let room;
-      let tip;
-      switch (pos) {
-        case 'top':
-          tip = by + bh + gap;
-          room = wa.y + wa.height - margin - (tip + depth);
-          break;
-        case 'left':
-          tip = bx + bw + gap;
-          room = wa.height - 2 * margin;
-          break;
-        case 'right':
-          tip = bx - gap;
-          room = wa.height - 2 * margin;
-          break;
-        default:
-          tip = by - gap;
-          room = tip - depth - (wa.y + margin);
-      }
+      let wa = Main.layoutManager.getWorkAreaForMonitor(dock._monitorIndex);
+      // the dock's edge is its background's, so the panel never covers it
+      let [x, y] = dock._background.get_transformed_position();
+      let [w, h] = dock._background.get_transformed_size();
+      let { tip, room } = anchorFor(pos, { x, y, w, h }, wa, sizes);
+      let [pw, ph] = this._fitHeight(room);
+      let [cx, cy] = this._iconCenter();
+      let origin = originFor(pos, {
+        tip,
+        depth: sizes.depth,
+        size: { w: pw, h: ph },
+        icon: { x: cx, y: cy },
+        wa,
+        monitor: dock._monitor,
+        margin: sizes.margin,
+      });
+      this._rect = {
+        x: Math.round(origin.x),
+        y: Math.round(origin.y),
+        w: pw,
+        h: ph,
+        tip: Math.round(tip),
+        vertical: isVertical(pos),
+        ...directionFor(pos),
+      };
+      let r = this._rect;
+      this._popover.set_position(r.x - dock._monitor.x, r.y - dock._monitor.y);
+      this._popover.set_size(pw, ph);
+      this._panel.set_size(pw, ph);
+      this._applyMaterial(glassOn);
+      this._aim(cx, cy);
+    }
 
-      // too tall for the room: give up file rows, never the dock
+    // too tall for the room: give up file rows, never the dock
+    _fitHeight(room) {
       let [, pw] = this._panel.get_preferred_width(-1);
       let [, ph] = this._panel.get_preferred_height(pw);
       if (ph > room) {
         let [, sh] = this._scroll.get_preferred_height(-1);
-        this._scroll.height = Math.max(MIN_SCROLL * s, sh - (ph - room));
+        this._scroll.height = Math.max(MIN_SCROLL * this._scale, sh - (ph - room));
         [, ph] = this._panel.get_preferred_height(pw);
       }
+      return [pw, ph];
+    }
 
-      let x, y;
-      if (vertical) {
-        x = pos === 'left' ? tip + depth : tip - depth - pw;
-        y = clamp(cy - ph / 2, wa.y + margin, wa.y + wa.height - margin - ph);
-      } else {
-        x = clamp(cx - pw / 2, m.x + margin, m.x + m.width - margin - pw);
-        y = pos === 'top' ? tip + depth : tip - depth - ph;
-      }
-      this._rect = {
-        x: Math.round(x),
-        y: Math.round(y),
-        w: pw,
-        h: ph,
-        tip: Math.round(tip),
-        vertical,
-        // unit direction from the pointer's tip into the panel
-        dx: pos === 'left' ? 1 : pos === 'right' ? -1 : 0,
-        dy: pos === 'top' ? 1 : pos === 'bottom' ? -1 : 0,
-      };
-      let r = this._rect;
-      this._popover.set_position(r.x - m.x, r.y - m.y);
-      this._popover.set_size(pw, ph);
-      this._panel.set_size(pw, ph);
-
-      let ext = dock.extension;
+    _applyMaterial(glassOn) {
+      let ext = this.dock.extension;
+      let s = this._scale;
       let glass = this._glass;
-      if (glassOn) {
-        // The windows behind, whatever the dock's glass-backdrop: the panel
-        // floats over them (the dock's usual wallpaper-only backdrop would
-        // show the wallpaper through a window). It is a still view, blurred
-        // once while they do not change.
-        glass.setBackdrop('windows', dock._monitorIndex);
-        glass.setMaterial(
-          this._radius,
-          Math.max(ext.glass_blur, GLASS_MIN_BLUR) * s,
-          ext.glass_refraction * s,
-          ext.glass_rim,
-          ...GLASS_TINT,
-          s
-        );
-      } else {
-        glass.setBackdrop('none', dock._monitorIndex);
+      if (!glassOn) {
+        glass.setBackdrop('none', this.dock._monitorIndex);
         glass.setMaterial(this._radius, 0, 0, FLAT_RIM, ...FLAT_TINT, s);
+        return;
       }
-      this._aim(cx, cy);
+      // The windows behind, whatever the dock's glass-backdrop: the panel
+      // floats over them (the dock's usual wallpaper-only backdrop would
+      // show the wallpaper through a window). It is a still view, blurred
+      // once while they do not change.
+      glass.setBackdrop('windows', this.dock._monitorIndex);
+      glass.setMaterial(
+        this._radius,
+        Math.max(ext.glass_blur, GLASS_MIN_BLUR) * s,
+        ext.glass_refraction * s,
+        ext.glass_rim,
+        ...GLASS_TINT,
+        s
+      );
     }
 
     // Where the stack's icon is drawn: the animator's renderer, which the
@@ -473,7 +513,8 @@ export const StackPanel = GObject.registerClass(
       this._aim(cx, cy);
     }
 
-    _thumb(f, size, scale) {
+    _thumb(f, size) {
+      let scale = this._scale;
       let preview = previewFile(f);
       if (preview) {
         let bin = new St.Bin({ width: size * scale, height: size * scale });
@@ -494,7 +535,7 @@ export const StackPanel = GObject.registerClass(
         bin.set_child(picture);
         return bin;
       }
-      let gicon = f.fileInfo?.get_icon?.();
+      let gicon = f.gicon ?? f.fileInfo?.get_icon?.();
       return new St.Icon(
         gicon
           ? { gicon, icon_size: size }
@@ -502,16 +543,16 @@ export const StackPanel = GObject.registerClass(
       );
     }
 
-    _gridCell(f, scale) {
+    _gridCell(f) {
       let base =
         'border-radius: 10px; padding: 4px;' +
-        `width: ${GRID_CELL - 8}px; height: ${GRID_CELL + 4}px;`;
+        `width: ${PANEL.GRID_CELL - 8}px; height: ${PANEL.GRID_CELL + 4}px;`;
       let cell = new St.Button({ style: base, track_hover: true });
       let box = new St.BoxLayout({
         orientation: Clutter.Orientation.VERTICAL,
         x_align: Clutter.ActorAlign.CENTER,
       });
-      let thumb = this._thumb(f, GRID_THUMB, scale);
+      let thumb = this._thumb(f, PANEL.GRID_THUMB);
       thumb.x_align = Clutter.ActorAlign.CENTER;
       box.add_child(thumb);
       let label = new St.Label({
@@ -530,14 +571,14 @@ export const StackPanel = GObject.registerClass(
       return cell;
     }
 
-    _listRow(f, scale) {
+    _listRow(f) {
       let row = new St.Button({
         style: LIST_ROW_STYLE,
         track_hover: true,
         x_expand: true,
       });
       let box = new St.BoxLayout({ x_expand: true });
-      box.add_child(this._thumb(f, LIST_THUMB, scale));
+      box.add_child(this._thumb(f, PANEL.LIST_THUMB));
       let label = new St.Label({
         text: f.name,
         style: 'color: white; padding-left: 10px;',
@@ -555,10 +596,17 @@ export const StackPanel = GObject.registerClass(
     }
 
     // Buttons stay clickable while the panel shrinks away after close();
-    // by then the dock reference is gone, so activation is ignored.
+    // by then the dock reference is gone, so activation is ignored. An item
+    // with its own `activate` (a recent app) starts itself; a file opens in
+    // its default application, a folder in the file manager.
     _open(f) {
       if (this._closed) return;
       this.dock._maybeBounce(this._target);
+      if (f.activate) {
+        this.close();
+        f.activate();
+        return;
+      }
       this._spawn(openCommand(f, this._fileExplorer));
     }
 

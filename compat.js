@@ -306,21 +306,6 @@ export function setOverviewDashVisibility(overviewDash, show, state = null) {
 }
 
 /**
- * Where the dock's own app-level menu items go in a Shell AppMenu: right
- * after the Pin to Dash / Unpin toggle. The toggle and the item list are
- * private to the Shell, so they are read here and nowhere else.
- *
- * @param {object} menu Shell AppMenu
- * @returns {number|undefined} index for addMenuItem(), undefined = append
- */
-export function appMenuAfterPinIndex(menu) {
-  const anchor = menu?._toggleFavoriteItem;
-  const items = menu?._getMenuItems?.();
-  const at = anchor && items ? items.indexOf(anchor) : -1;
-  return at >= 0 ? at + 1 : undefined;
-}
-
-/**
  * Make the drag that `draggable` is starting carry `appIcon` instead of the
  * actor the press landed on. The Shell reads `draggable.actor._delegate` for
  * the drag actor and as the drag source right after emitting 'drag-begin',
