@@ -12,6 +12,22 @@ const MAX_CORRECTION = 1.35;
 // Largest bbox-centering shift, in canvas fractions.
 const MAX_CENTER_SHIFT = 0.08;
 
+// Leftmost / rightmost opaque pixel of one row (`row` = offset of its first
+// alpha byte), -1 when the row is transparent.
+function firstOpaque(data, row, width, nChannels, threshold) {
+  for (let x = 0; x < width; x++) {
+    if (data[row + x * nChannels] > threshold) return x;
+  }
+  return -1;
+}
+
+function lastOpaque(data, row, width, nChannels, threshold) {
+  for (let x = width - 1; x >= 0; x--) {
+    if (data[row + x * nChannels] > threshold) return x;
+  }
+  return -1;
+}
+
 /**
  * Opaque bounding box of a pixel buffer.
  * @param {ArrayLike<number>} data pixels, rowstride bytes per row
@@ -32,14 +48,13 @@ export function opaqueBBox(data, width, height, rowstride, nChannels, threshold 
   let y1 = -1;
   for (let y = 0; y < height; y++) {
     let row = y * rowstride + 3;
-    for (let x = 0; x < width; x++) {
-      if (data[row + x * nChannels] > threshold) {
-        if (x < x0) x0 = x;
-        if (x > x1) x1 = x;
-        if (y < y0) y0 = y;
-        y1 = y;
-      }
-    }
+    let first = firstOpaque(data, row, width, nChannels, threshold);
+    if (first < 0) continue;
+    if (first < x0) x0 = first;
+    let last = lastOpaque(data, row, width, nChannels, threshold);
+    if (last > x1) x1 = last;
+    if (y < y0) y0 = y;
+    y1 = y;
   }
   return x1 < 0 ? null : { x0, y0, x1: x1 + 1, y1: y1 + 1 };
 }

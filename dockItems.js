@@ -377,30 +377,7 @@ export const DockItemContainer = GObject.registerClass(
 
       this.custom_icon = true;
 
-      const DesktopAppInfo = GioUnix?.DesktopAppInfo ?? Gio.DesktopAppInfo;
-
-      let desktopApp = params.app;
-      if (desktopApp) {
-        // monkey patch dummy app
-        if (!desktopApp.get_id) {
-          desktopApp.get_id = () => null;
-        }
-        if (!desktopApp.get_name) {
-          desktopApp.get_name = () => '';
-        }
-        if (!desktopApp.get_icon) {
-          desktopApp.can_open_new_window = () => false;
-          desktopApp.create_icon_texture = () => null;
-          desktopApp.get_windows = () => null;
-          desktopApp.get_icon = () => {
-            return {
-              get_names: () => [],
-            };
-          };
-        }
-      } else if (params.appinfo_filename) {
-        desktopApp = DesktopAppInfo.new_from_filename(params.appinfo_filename);
-      }
+      let desktopApp = this._resolveDesktopApp(params);
 
       // for custom buttons 
       if (!desktopApp.can_open_new_window) {
@@ -437,19 +414,53 @@ export const DockItemContainer = GObject.registerClass(
 
       // menu
       if (params.appinfo_filename || params.app) {
-        this._menu = new DockItemMenu(this, St.Side.TOP, {
-          desktopApp,
-          item: this,
-        });
-        this._menu.item = this;
-        this._menuManager = new PopupMenu.PopupMenuManager(this);
-        this._menu._menuManager = this._menuManager;
-        Main.uiGroup.add_child(this._menu.actor);
-        this._menuManager.addMenu(this._menu);
-        this._menu.close();
-        dashIcon._menu = this._menu;
-        this.connect('destroy', () => this._destroyMenu());
+        this._attachMenu(desktopApp, dashIcon);
       }
+    }
+
+    // The app behind the container: the given one (dummy members patched in
+    // for custom buttons) or the desktop entry named by params.
+    _resolveDesktopApp(params) {
+      const DesktopAppInfo = GioUnix?.DesktopAppInfo ?? Gio.DesktopAppInfo;
+
+      let desktopApp = params.app;
+      if (desktopApp) {
+        // monkey patch dummy app
+        if (!desktopApp.get_id) {
+          desktopApp.get_id = () => null;
+        }
+        if (!desktopApp.get_name) {
+          desktopApp.get_name = () => '';
+        }
+        if (!desktopApp.get_icon) {
+          desktopApp.can_open_new_window = () => false;
+          desktopApp.create_icon_texture = () => null;
+          desktopApp.get_windows = () => null;
+          desktopApp.get_icon = () => {
+            return {
+              get_names: () => [],
+            };
+          };
+        }
+      } else if (params.appinfo_filename) {
+        desktopApp = DesktopAppInfo.new_from_filename(params.appinfo_filename);
+      }
+      return desktopApp;
+    }
+
+    _attachMenu(desktopApp, dashIcon) {
+      this._menu = new DockItemMenu(this, St.Side.TOP, {
+        desktopApp,
+        item: this,
+      });
+      this._menu.item = this;
+      this._menuManager = new PopupMenu.PopupMenuManager(this);
+      this._menu._menuManager = this._menuManager;
+      Main.uiGroup.add_child(this._menu.actor);
+      this._menuManager.addMenu(this._menu);
+      this._menu.close();
+      dashIcon._menu = this._menu;
+      this.connect('destroy', () => this._destroyMenu());
     }
 
     _destroyMenu() {
@@ -513,92 +524,97 @@ export const DockBackground = GObject.registerClass(
       let padding =
         iconSize * 0.1 * (dock.extension.dock_padding || 0) * scaleFactor;
 
-      if (first && last) {
-        let tx = first._icon.translationX;
-        let ty = first._icon.translationY;
-        let tx2 = last._icon.translationX;
-        let ty2 = last._icon.translationY;
+      let tx = first._icon.translationX;
+      let ty = first._icon.translationY;
+      let tx2 = last._icon.translationX;
+      let ty2 = last._icon.translationY;
 
-        // bottom
-        this.x = dp[0];
-        this.y = dp[1];
-        let width = dock.dash.width;
-        let height = dock.dash.height;
+      // bottom
+      this.x = dp[0];
+      this.y = dp[1];
+      let [width, height] = this._fitToSlots(
+        dock,
+        vertical,
+        dock.dash.width,
+        dock.dash.height
+      );
 
-        // Along the dock the platter spans the icons' own slots (what the
-        // animator measured and the translations below are relative to), not
-        // the live size of the Dash: after an item is added the Dash can
-        // already have its final size while the slots are still those of an
-        // intermediate allocation, which showed as a one-frame dip. What the
-        // slots do not cover (the Dash's own padding) is learned while they
-        // hold still.
-        const slots = dock.animator?.layout;
-        if (slots?.nodeCount) {
-          const span = slots.spanEnd - slots.spanStart;
-          // the pad belongs to one axis: forget it when the dock turns
-          if (this._slotPadVertical !== vertical) {
-            this._slotPad = undefined;
-            this._slotPadVertical = vertical;
-          }
-          if (slots.settled) {
-            this._slotPad = ((vertical ? height : width) - span) / 2;
-          }
-          if (Number.isFinite(this._slotPad)) {
-            if (vertical) {
-              this.y = slots.spanStart - this._slotPad;
-              height = span + 2 * this._slotPad;
-            } else {
-              this.x = slots.spanStart - this._slotPad;
-              width = span + 2 * this._slotPad;
-            }
-          }
-        }
-
-        if (vertical) {
-          this.y += ty;
-          height += ty2 - ty;
-        } else {
-          this.x += tx;
-          width += tx2 - tx;
-        }
-
-        // padding
-        this.x -= padding;
-        width += padding * 2;
-        this.y -= padding;
-        height += padding * 2;
-
-        if (!isNaN(width)) {
-          this.width = width;
-        }
-        if (!isNaN(height)) {
-          this.height = height;
-        }
-
-        this.x -= dock.x;
-        this.y -= dock.y;
-        this._padding = padding;
-
-        // adjust padding
-        let az = -padding;
-        this.x += az / 2;
-        this.width -= az * (1 + !vertical);
-        this.y += az / 2;
-        this.height -= az * (1 + vertical);
-
-        if (panel_mode) {
-          if (vertical) {
-            this.y = 0;
-            this.height = dock.height;
-          } else {
-            this.x = 0;
-            this.width = dock.width;
-          }
-        }
-
-        this.opacity = 255;
-        dock.dash.opacity = this.opacity;
+      if (vertical) {
+        this.y += ty;
+        height += ty2 - ty;
+      } else {
+        this.x += tx;
+        width += tx2 - tx;
       }
+
+      // padding
+      this.x -= padding;
+      width += padding * 2;
+      this.y -= padding;
+      height += padding * 2;
+
+      if (!isNaN(width)) {
+        this.width = width;
+      }
+      if (!isNaN(height)) {
+        this.height = height;
+      }
+
+      this.x -= dock.x;
+      this.y -= dock.y;
+      this._padding = padding;
+
+      // adjust padding
+      let az = -padding;
+      this.x += az / 2;
+      this.width -= az * (1 + !vertical);
+      this.y += az / 2;
+      this.height -= az * (1 + vertical);
+
+      if (panel_mode) {
+        if (vertical) {
+          this.y = 0;
+          this.height = dock.height;
+        } else {
+          this.x = 0;
+          this.width = dock.width;
+        }
+      }
+
+      this.opacity = 255;
+      dock.dash.opacity = this.opacity;
+    }
+
+    // Along the dock the platter spans the icons' own slots (what the
+    // animator measured and the translations are relative to), not the live
+    // size of the Dash: after an item is added the Dash can already have its
+    // final size while the slots are still those of an intermediate
+    // allocation, which showed as a one-frame dip. What the slots do not
+    // cover (the Dash's own padding) is learned while they hold still.
+    // Moves this.x/y to the slots' start; returns the [width, height] to use.
+    _fitToSlots(dock, vertical, width, height) {
+      const slots = dock.animator?.layout;
+      if (!slots?.nodeCount) {
+        return [width, height];
+      }
+      const span = slots.spanEnd - slots.spanStart;
+      // the pad belongs to one axis: forget it when the dock turns
+      if (this._slotPadVertical !== vertical) {
+        this._slotPad = undefined;
+        this._slotPadVertical = vertical;
+      }
+      if (slots.settled) {
+        this._slotPad = ((vertical ? height : width) - span) / 2;
+      }
+      if (!Number.isFinite(this._slotPad)) {
+        return [width, height];
+      }
+      if (vertical) {
+        this.y = slots.spanStart - this._slotPad;
+        return [width, span + 2 * this._slotPad];
+      }
+      this.x = slots.spanStart - this._slotPad;
+      return [span + 2 * this._slotPad, height];
     }
   }
 );
