@@ -3,8 +3,9 @@
 // (launch, attention) is a translation of that renderer, so an overlay that
 // copies the renderer's translation follows any bounce with the same easing and
 // no lag: the copy happens in the renderer's own notify::translation-* emission,
-// not on the overlay's next update pass. Overlays that must stay put (the
-// running-state dots) simply do not follow.
+// not on the overlay's next update pass. The running-state dots follow too;
+// their baseline offset sits on an inner actor, so at rest the overlay's own
+// translation is 0 and the shared baseline is untouched.
 //
 // No gi imports: tests/overlay_follow_check.js drives it with fake actors.
 

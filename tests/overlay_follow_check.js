@@ -1,6 +1,7 @@
 // gjs -m tests/overlay_follow_check.js
 // A bounce translates the icon's renderer; badges/counters/progress overlays
-// must carry exactly the same offset on every frame, the running dots must not.
+// must carry exactly the same offset on every frame, and so must the running dots,
+// whose baseline lives on an inner actor and is untouched at rest.
 import System from 'system';
 
 import { TranslationFollower } from '../overlayFollow.js';
@@ -43,18 +44,20 @@ function bounceOffset(frame, travel) {
 for (let [label, axis, sign] of [['bottom', 'translationY', -1], ['left', 'translationX', 1], ['top', 'translationY', 1]]) {
   let renderer = new FakeActor();
   let badge = new FakeActor();
-  let dots = new FakeActor(); // never follows: fixed running-state baseline
+  let dots = new FakeActor();
   let follower = new TranslationFollower(badge);
+  let dotsFollower = new TranslationFollower(dots);
   follower.to(renderer);
+  dotsFollower.to(renderer);
   let mismatched = 0;
-  let dotsMoved = 0;
+  let dotsOff = 0;
   let moved = 0;
   for (let frame = 0; frame < 130; frame++) {
     renderer[axis] = sign * bounceOffset(frame, 21.5);
     // overlay update pass of the same frame must not disturb the offset
-    if (frame % 3 === 0) follower.to(renderer);
+    if (frame % 3 === 0) { follower.to(renderer); dotsFollower.to(renderer); }
     if (badge.translationX !== renderer.translationX || badge.translationY !== renderer.translationY) mismatched++;
-    if (dots.translationX !== 0 || dots.translationY !== 0) dotsMoved++;
+    if (dots.translationX !== renderer.translationX || dots.translationY !== renderer.translationY) dotsOff++;
     if (renderer[axis] !== 0) moved++;
   }
   // the bounce's last frame resets the offset
@@ -62,7 +65,8 @@ for (let [label, axis, sign] of [['bottom', 'translationY', -1], ['left', 'trans
   renderer.translationY = 0;
   check(moved > 60, `${label}: the bounce actually moves the renderer (${moved} frames)`);
   check(mismatched === 0, `${label}: badge offset equals icon offset on every frame`);
-  check(dotsMoved === 0, `${label}: dots overlay stays on the fixed baseline`);
+  check(dotsOff === 0, `${label}: dots offset equals icon offset on every frame`);
+  check(dots.translationX === 0 && dots.translationY === 0, `${label}: dots overlay offset is 0 after the bounce`);
   check(badge.translationX === 0 && badge.translationY === 0, `${label}: badge is back at rest after the bounce`);
 }
 
@@ -83,6 +87,31 @@ for (let [label, axis, sign] of [['bottom', 'translationY', -1], ['left', 'trans
   follower.to(null);
   b.translationY = -8;
   check(badge.translationY === -7, 'unbound overlay keeps its last offset');
+}
+
+// several items, each bouncing; mid-bounce restart and cancel leave no residue
+{
+  const BASELINE_Y = 100; // shared, from indicatorPlacement, never touched by follow
+  let items = [0, 1, 2].map(() => {
+    let renderer = new FakeActor();
+    let dots = new FakeActor();
+    dots.y = BASELINE_Y;
+    new TranslationFollower(dots).to(renderer);
+    return { renderer, dots };
+  });
+  let [a, b, c] = items;
+  for (let f = 0; f < 25; f++) a.renderer.translationY = -bounceOffset(f, 20);
+  // a new bounce starts mid-bounce: the renderer restarts from its own value
+  a.renderer.translationY = 0;
+  for (let f = 0; f < 25; f++) {
+    a.renderer.translationY = -bounceOffset(f, 20);
+    check(a.dots.translationY === a.renderer.translationY, `restart frame ${f}: no accumulated offset`);
+  }
+  b.renderer.translationY = -12; // interrupted: reset without finishing
+  b.renderer.translationY = 0;
+  a.renderer.translationY = 0;
+  check(items.every(i => i.dots.translationX === 0 && i.dots.translationY === 0), 'after end/cancel/interrupt no dots offset remains');
+  check(items.every(i => i.dots.y === BASELINE_Y && i.dots.y === c.dots.y), 'dots baseline y identical across items');
 }
 
 if (failures) {

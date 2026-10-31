@@ -192,11 +192,16 @@ export const DockItemDotsOverlay = GObject.registerClass(
         name: 'd2daDotsOverlay',
         ...params,
       });
+      // the overlay carries the icon's bounce; the baseline offset lives on
+      // the inner renderer, so at rest the overlay translation is exactly 0
+      this._follower = new TranslationFollower(this);
     }
 
     update(icon, data) {
       let renderer = this.renderer;
       let { appCount, position, vertical, extension, dock } = data;
+
+      this._follower.to(icon._renderer);
 
       let options = extension.running_indicator_style_options;
       let running_indicator_style = options[extension.running_indicator_style];
