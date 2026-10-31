@@ -23,10 +23,34 @@ import {
 } from 'resource:///org/gnome/shell/ui/dash.js';
 
 import { DockPosition } from './dock.js';
-import { indicatorBand, indicatorShift, outward } from './iconGeometry.js';
+import { indicatorBand, indicatorPlacement, visibleEdge } from './iconGeometry.js';
 
-// gap between the visible icon and the running indicator, share of the slot
-const INDICATOR_GAP = 0.06;
+// gap between the running indicator and the dock edge, share of the icon size
+const INDICATOR_EDGE_MARGIN = 0.06;
+
+/**
+ * Cross-axis coordinate (renderArea space) of the dock's visible outer edge:
+ * the platter when it is drawn, else the dash (a lone icon draws no
+ * platter), clamped to the monitor at rest (see visibleEdge). The dash slide
+ * (autohide, edge distance) is kept so hidden docks take their dots along.
+ */
+function dockEdge(dock, renderOffset) {
+  let bg = dock._background;
+  let box = bg && bg.opacity > 0 && bg.width > 0 && bg.height > 0 ? bg : dock.dash;
+  let pos = box.get_transformed_position();
+  let mon = dock._monitor;
+  let dash = dock.dash;
+  switch (dock._position) {
+    case DockPosition.LEFT:
+      return visibleEdge('left', pos[0], dash.translationX, mon.x) - renderOffset[0];
+    case DockPosition.RIGHT:
+      return visibleEdge('right', pos[0] + box.width, dash.translationX, mon.x + mon.width) - renderOffset[0];
+    case DockPosition.TOP:
+      return visibleEdge('top', pos[1], dash.translationY, mon.y) - renderOffset[1];
+    default:
+      return visibleEdge('bottom', pos[1] + box.height, dash.translationY, mon.y + mon.height) - renderOffset[1];
+  }
+}
 
 class DockItemMenu extends PopupMenu.PopupMenu {
   constructor(sourceActor, side = St.Side.TOP, params = {}) {
@@ -171,20 +195,21 @@ export const DockItemDotsOverlay = GObject.registerClass(
 
     update(icon, data) {
       let renderer = this.renderer;
-      let { appCount, position, vertical, extension } = data;
+      let { appCount, position, vertical, extension, dock } = data;
 
       let options = extension.running_indicator_style_options;
       let running_indicator_style = options[extension.running_indicator_style];
 
-      // The overlay is the icon's slot square, unscaled; the band is then
-      // moved clear of the visible icon from the slot geometry alone.
-      let size = icon._slotSize;
-      this.set_position(icon._slotX, icon._slotY);
-      this.set_size(size, size);
+      // Every item's indicator sits on one baseline: the overlay is a fixed
+      // square (the unmagnified icon size) flush with the dock edge and the
+      // band is moved to a margin inside it, so neither the item's own size,
+      // normalization nor magnification changes where the dots are.
+      let rest = dock._iconSizeScaledDown * dock._scaleFactor;
+      this.set_size(rest, rest);
       this.set_scale(1, 1);
-      renderer.set_size(size, size);
+      renderer.set_size(rest, rest);
 
-      let canvasScale = size / renderer._canvas.width;
+      let canvasScale = rest / renderer._canvas.width;
       renderer._canvas.set_scale(canvasScale, canvasScale);
 
       let sizeIndex = extension.running_indicator_size || 0;
@@ -194,16 +219,19 @@ export const DockItemDotsOverlay = GObject.registerClass(
         this._bandSize = sizeIndex;
         this._band = indicatorBand(style, sizeIndex, renderer._canvas.width);
       }
-      let shift = indicatorShift(
-        size,
-        icon._contentFill,
-        this._band.top,
-        renderer._canvas.width,
-        Math.max(1, size * INDICATOR_GAP)
-      );
-      let [ox, oy] = outward(position);
-      renderer.translationX = ox * shift;
-      renderer.translationY = oy * shift;
+      let slotSize = icon._slotSize;
+      let at = indicatorPlacement({
+        position,
+        edge: dockEdge(dock, dock.renderArea.get_transformed_position()),
+        along: (vertical ? icon._slotY : icon._slotX) + slotSize / 2,
+        rest,
+        band: this._band,
+        canvas: renderer._canvas.width,
+        margin: Math.max(1, rest * INDICATOR_EDGE_MARGIN),
+      });
+      this.set_position(at.x, at.y);
+      renderer.translationX = at.dx;
+      renderer.translationY = at.dy;
 
       let running_indicator_color =
         extension.contrast_colors?.indicator ?? extension.running_indicator_color;

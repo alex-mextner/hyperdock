@@ -160,42 +160,55 @@ export function outward(position) {
 }
 
 /**
- * Distance to move the indicator overlay (a square of `size` px drawing the
- * band at its bottom edge) towards the docked side so the band's icon-facing
- * edge sits `gap` px past the visible content. `fill` is the share of the
- * slot the content covers (centred). Allocation-free: runs every frame.
+ * Outer edge of a dock for the indicators. `outer` is the platter's outward
+ * coordinate as drawn (it already includes `slide`, the dash translation along
+ * the cross axis: autohide, edge distance); `bound` is the monitor edge on
+ * that side. A platter padded past the screen is clamped to the monitor in its
+ * resting place, then the slide is added back, so a hidden dock keeps its dots
+ * with it instead of leaving them on screen.
  */
-export function indicatorShift(size, fill, bandTop, canvas, gap) {
-  return (size * fill) / 2 + gap - (bandTop * size) / canvas + size / 2;
+export function visibleEdge(position, outer, slide, bound) {
+  let rest = outer - slide;
+  let towardsMax = position === 'bottom' || position === 'right';
+  return (towardsMax ? Math.min(rest, bound) : Math.max(rest, bound)) + slide;
 }
 
 /**
- * Where to put the indicator overlay.
- * `content` is the rendered visible icon rect {x, y, w, h}; `slot` the square
- * the overlay is sized to ({x, y, w}). The overlay draws a band at the slot's
- * bottom edge; this returns the shift (dx, dy) that moves the band's
- * icon-facing edge to `gap` px past the content on the docked side, and the
- * resulting world-space band rect.
+ * Where the running-indicator overlay goes. Every item shares one baseline:
+ * the band is anchored to the dock's own edge, never to the item it belongs
+ * to, so differently sized, normalized or magnified icons all get dots on the
+ * same line, `margin` px inside the dock.
+ *
+ * The overlay is a fixed `rest` px square (the unmagnified icon size, not the
+ * item's live slot) that draws the band at its bottom edge. It is put flush
+ * against the dock edge (`edge`: the cross-axis coordinate of the dock's
+ * outward side) and centred on `along` (the item's centre along the dock),
+ * then shifted `shift` px outward so the band's outer edge lands `margin` px
+ * inside the dock. Allocation-free except for the result: runs every frame.
+ *
+ * @returns {{x:number,y:number,shift:number,dx:number,dy:number,rect:{x:number,y:number,w:number,h:number}}}
+ *   x/y overlay origin before the shift; dx/dy the shift as a translation;
+ *   rect the band's world rectangle after it.
  */
-export function indicatorLayout({ position, slot, content, band, canvas, gap }) {
-  let k = slot.w / canvas;
+export function indicatorPlacement({ position, edge, along, rest, band, canvas, margin }) {
+  let k = rest / canvas;
   let [ox, oy] = outward(position);
-  let cx = slot.x + slot.w / 2;
-  let cy = slot.y + slot.w / 2;
-  let contentEdge =
-    ox !== 0
-      ? (ox > 0 ? content.x + content.w - cx : cx - content.x)
-      : (oy > 0 ? content.y + content.h - cy : cy - content.y);
-  let shift = indicatorShift(slot.w, (2 * contentEdge) / slot.w, band.top, canvas, gap);
-  let a = band.top * k - slot.w / 2 + shift;
-  let b = band.bottom * k - slot.w / 2 + shift;
-  let rect =
-    ox !== 0
-      ? { x: Math.min(cx + ox * a, cx + ox * b), y: slot.y, w: Math.abs(b - a), h: slot.w }
-      : { x: slot.x, y: Math.min(cy + oy * a, cy + oy * b), w: slot.w, h: Math.abs(b - a) };
-  return { dx: ox * shift, dy: oy * shift, rect };
-}
-
-export function rectsIntersect(a, b) {
-  return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+  // band's outer edge, measured inward from the overlay's outer edge
+  let shift = (canvas - band.bottom) * k - margin;
+  let x = ox !== 0 ? (ox > 0 ? edge - rest : edge) : along - rest / 2;
+  let y = oy !== 0 ? (oy > 0 ? edge - rest : edge) : along - rest / 2;
+  // band extents along the outward axis, from the overlay's outer edge inward
+  let near = (canvas - band.bottom) * k; // outer side of the band
+  let far = (canvas - band.top) * k; // icon-facing side of the band
+  let rect;
+  if (ox !== 0) {
+    let outer = edge - ox * (near - shift);
+    let inner = edge - ox * (far - shift);
+    rect = { x: Math.min(outer, inner), y, w: far - near, h: rest };
+  } else {
+    let outer = edge - oy * (near - shift);
+    let inner = edge - oy * (far - shift);
+    rect = { x, y: Math.min(outer, inner), w: rest, h: far - near };
+  }
+  return { x, y, shift, dx: ox * shift, dy: oy * shift, rect };
 }

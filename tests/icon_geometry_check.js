@@ -3,10 +3,10 @@
 import {
   CONTENT_TARGET,
   indicatorBand,
-  indicatorLayout,
+  indicatorPlacement,
+  visibleEdge,
   normalization,
   opaqueBBox,
-  rectsIntersect,
   snapToPixel,
 } from '../iconGeometry.js';
 import System from 'system';
@@ -91,48 +91,84 @@ function disc(size, fraction, cx = size / 2, cy = size / 2, rowPad = 0) {
   check(snapToPixel(7.49, 1) === 7, 'snap at scale 1 rounds to integers');
 }
 
-// indicator never intersects the rendered icon, any position/style/size/slot
+// every item's indicator shares one baseline inside the dock edge, whatever the
+// item's size (magnification), position, style or indicator size
 {
   let styles = [
     'dot', 'dots', 'dash', 'dashes', 'square', 'squares', 'triangle', 'triangles',
     'diamond', 'diamonds', 'segmented', 'solid', 'binary', 'default',
   ];
-  let bad = 0;
+  let rest = 48;
+  let margin = 1;
   let cases = 0;
+  let mismatched = 0;
+  let outside = 0;
+  let wrongMargin = 0;
+  // dock edge per position in an arbitrary 1000x800 area; items magnify 1x..2x
+  let edges = { bottom: 790.5, top: 12.25, left: 8.75, right: 991 };
   for (let position of ['bottom', 'top', 'left', 'right']) {
+    let horizontal = position === 'bottom' || position === 'top';
     for (let style of styles) {
       for (let sizeIndex of [0, 1, 2]) {
-        for (let w of [24, 48, 64, 96, 143.5, 200]) {
-          for (let fill of [0.9, 1.0]) {
-            let slot = { x: 31.25, y: 77.5, w };
-            let content = {
-              x: slot.x + (w * (1 - fill)) / 2,
-              y: slot.y + (w * (1 - fill)) / 2,
-              w: w * fill,
-              h: w * fill,
-            };
-            let band = indicatorBand(style, sizeIndex, 96);
-            let lay = indicatorLayout({ position, slot, content, band, canvas: 96, gap: Math.max(1, w * 0.06) });
+        let band = indicatorBand(style, sizeIndex, 96);
+        let first = null;
+        for (let slotW of [24, 43.7, 48, 64, 71.3, 96]) {
+          for (let along of [100, 333.3, 640]) {
+            let at = indicatorPlacement({ position, edge: edges[position], along, rest, band, canvas: 96, margin });
+            // reference: the band's cross-axis outer coordinate, independent of slotW/along
+            let outer = horizontal
+              ? (position === 'bottom' ? at.rect.y + at.rect.h : at.rect.y)
+              : (position === 'right' ? at.rect.x + at.rect.w : at.rect.x);
+            let centre = horizontal ? at.rect.y + at.rect.h / 2 : at.rect.x + at.rect.w / 2;
+            first ??= centre;
             cases++;
-            if (rectsIntersect(lay.rect, content) || rectsIntersect(lay.rect, slot) && fill === 1.0) bad++;
+            if (Math.abs(centre - first) > 1e-9) mismatched++;
+            let inside = position === 'bottom' ? edges.bottom - outer
+              : position === 'top' ? outer - edges.top
+              : position === 'right' ? edges.right - outer
+              : outer - edges.left;
+            if (inside < margin - 1e-9) outside++;
+            if (Math.abs(inside - margin) > 1e-9) wrongMargin++;
           }
         }
       }
     }
   }
-  check(bad === 0, `indicator band clears the content rect (${cases} position/style/size/slot cases)`);
+  check(mismatched === 0, `indicator centres share one baseline for every slot size and position along the dock (${cases} cases)`);
+  check(outside === 0, 'indicator band stays inside the dock edge');
+  check(wrongMargin === 0, 'indicator band outer edge is exactly `margin` inside the dock edge');
 
-  // docked side: band lies on the outward side of the content
-  let slot = { x: 0, y: 0, w: 64 };
-  let content = { x: 3.2, y: 3.2, w: 57.6, h: 57.6 };
+  // the band reaches no farther than the overlay square would: bottom dock, 48px, dot
   let band = indicatorBand('dot', 0, 96);
-  let at = p => indicatorLayout({ position: p, slot, content, band, canvas: 96, gap: 1.28 }).rect;
-  check(at('bottom').y >= content.y + content.h, 'bottom: band below content');
-  check(at('top').y + at('top').h <= content.y, 'top: band above content');
-  check(at('left').x + at('left').w <= content.x, 'left: band left of content');
-  check(at('right').x >= content.x + content.w, 'right: band right of content');
-  let gapPx = at('bottom').y - (content.y + content.h);
-  check(Math.abs(gapPx - 1.28) < 1e-9, 'band near edge sits exactly `gap` below content');
+  let at = indicatorPlacement({ position: 'bottom', edge: 800, along: 100, rest, band, canvas: 96, margin });
+  check(at.rect.y + at.rect.h <= 800 - margin + 1e-9, 'bottom: band bottom is above the dock edge by the margin');
+  check(at.rect.y >= 800 - rest, 'bottom: band lies within the overlay square footprint');
+  check(at.dy === at.shift && at.dx === 0, 'bottom: shift is a pure vertical translation');
+  let l = indicatorPlacement({ position: 'left', edge: 0, along: 100, rest, band, canvas: 96, margin });
+  check(l.dx === -l.shift && l.dy === 0, 'left: shift is a pure horizontal translation towards the edge');
+}
+
+// along-axis: the overlay is centred on the item, whatever its size
+{
+  let band = indicatorBand('dot', 0, 96);
+  let ok = true;
+  for (let along of [40, 123.5, 700]) {
+    let h = indicatorPlacement({ position: 'bottom', edge: 800, along, rest: 48, band, canvas: 96, margin: 1 });
+    let v = indicatorPlacement({ position: 'left', edge: 0, along, rest: 48, band, canvas: 96, margin: 1 });
+    ok = ok && h.x + 24 === along && h.rect.x + h.rect.w / 2 === along;
+    ok = ok && v.y + 24 === along && v.rect.y + v.rect.h / 2 === along;
+  }
+  check(ok, 'overlay and band are centred on the item along the dock');
+}
+
+// autohide: platter padded past the screen is clamped at rest, the slide is kept
+{
+  check(visibleEdge('bottom', 803.75, 0, 800) === 800, 'bottom: padded platter clamps to the monitor');
+  check(visibleEdge('bottom', 803.75 + 70, 70, 800) === 870, 'bottom: hidden dock (slid 70px) keeps its dots 70px off-screen');
+  check(visibleEdge('top', -3.75 - 70, -70, 0) === -70, 'top: hidden dock leaves the screen with its dots');
+  check(visibleEdge('left', -3 - 60, -60, 0) === -60, 'left: hidden dock leaves the screen with its dots');
+  check(visibleEdge('right', 1203 + 60, 60, 1200) === 1260, 'right: hidden dock leaves the screen with its dots');
+  check(visibleEdge('bottom', 790, -10, 800) === 790, 'bottom: dock raised by edge distance keeps its edge');
 }
 
 if (failures) {
