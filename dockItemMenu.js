@@ -23,6 +23,58 @@ import { snapToPixel } from './iconGeometry.js';
 
 const ANIM_POSITION_PER_SEC = 450 / 1000;
 
+// The configured view of a stack, with 'automatic' resolved as in macOS:
+// fan while the files fit in it, else grid.
+function resolveStackView(f, maxFan) {
+  let view = f.stack?.view ?? 'fan';
+  if (view === 'automatic') {
+    view = f.total() <= maxFan ? 'fan' : 'grid';
+  }
+  return view;
+}
+
+// Caps the fan at maxFan files, adds a 'More...' entry that opens the folder
+// when files were cut, and orders them by index.
+function buildFanItems(f, files, maxFan, file_explorer, target) {
+  files = files.slice(0, maxFan);
+  if (files.length < f.total()) {
+    files = [
+      {
+        index: -1,
+        name: 'More...',
+        exec: `${file_explorer} ${GLib.shell_quote(f.folder)}`,
+        icon: target._icon.icon_name,
+        type: 'exec',
+      },
+      ...files,
+    ];
+  }
+  return files.sort(function (a, b) {
+    return a.index > b.index ? 1 : -1;
+  });
+}
+
+// Creates, slides out or raises the dock's fan list as its state
+// requires, then slides the items in unless it is on its way out.
+function showFanList(dock, target, files) {
+  if (!dock._list) {
+    dock._list = new DockItemList();
+    dock._list.dock = dock;
+    Main.uiGroup.add_child(dock._list);
+  } else if (dock._list.visible) {
+    dock._list.slideOut();
+  } else {
+    // remove and re-add so that it is repositioned to topmost
+    Main.uiGroup.remove_child(dock._list);
+    Main.uiGroup.add_child(dock._list);
+    dock._list.visible = true;
+  }
+
+  if (dock._list && dock._list.visible && !dock._list._hidden) {
+    dock._list.slideIn(target, files);
+  }
+}
+
 export const DockItemList = GObject.registerClass(
   {},
   class DockItemList extends St.Widget {
@@ -61,11 +113,7 @@ export const DockItemList = GObject.registerClass(
         let files = f.files() || [];
         if (!files.length) return;
         let maxFan = dock.extension.services?.maxFanItems() ?? 5;
-        let view = f.stack?.view ?? 'fan';
-        // Automatic, as in macOS: fan while the files fit in it, else grid
-        if (view === 'automatic') {
-          view = f.total() <= maxFan ? 'fan' : 'grid';
-        }
+        let view = resolveStackView(f, maxFan);
         if (view === 'grid' || view === 'list') {
           dock._destroyList();
           dock._stackPanel = new StackPanel(dock, target, f.stack, files, view);
@@ -78,39 +126,8 @@ export const DockItemList = GObject.registerClass(
           target.activateNewWindow();
           return;
         }
-        files = files.slice(0, maxFan);
-        if (files.length < f.total()) {
-          files = [
-            {
-              index: -1,
-              name: 'More...',
-              exec: `${file_explorer} ${GLib.shell_quote(f.folder)}`,
-              icon: target._icon.icon_name,
-              type: 'exec',
-            },
-            ...files,
-          ];
-        }
-        files = files.sort(function (a, b) {
-          return a.index > b.index ? 1 : -1;
-        });
-
-        if (!dock._list) {
-          dock._list = new DockItemList();
-          dock._list.dock = dock;
-          Main.uiGroup.add_child(dock._list);
-        } else if (dock._list.visible) {
-          dock._list.slideOut();
-        } else {
-          // remove and re-add so that it is repositioned to topmost
-          Main.uiGroup.remove_child(dock._list);
-          Main.uiGroup.add_child(dock._list);
-          dock._list.visible = true;
-        }
-
-        if (dock._list && dock._list.visible && !dock._list._hidden) {
-          dock._list.slideIn(target, files);
-        }
+        files = buildFanItems(f, files, maxFan, file_explorer, target);
+        showFanList(dock, target, files);
       };
 
       return target;
@@ -404,83 +421,8 @@ export const DockItemList = GObject.registerClass(
       }
 
       list._box?.get_children().forEach((c) => {
-        let waypoints = list._hidden ? c._waypointsOut : c._waypointsIn;
-        if (!waypoints || !waypoints.length) {
-          return;
-        }
-
-        if (list._hidden) {
-          c._icon.reactive = false;
-        }
-
-        let posVector = new Vector([c.x, c.y]);
-        let wp = waypoints[0];
-
-        didAnimate = true;
-
-        let dir = wp.subtract(posVector);
-        let mag = dir.magnitude();
-        if (mag > 0) {
-          dir = dir.normalize();
-        }
-        let delta = dir.multiplyScalar(speed * dt);
-        posVector = posVector.add(delta);
-        if (delta.magnitude() > mag || mag == 0) {
-          waypoints.shift();
-          posVector = wp;
-        }
-        // physical pixel grid: a fractional phase makes the picture shimmer
-        let pixelScale = dock._monitor.geometry_scale || 1;
-        c.x = snapToPixel(posVector.x, pixelScale);
-        c.y = snapToPixel(posVector.y, pixelScale);
-
-        c._label_container.x = c.x;
-        c._label_container.y = c.y;
-
-        switch (dock._position) {
-          case DockPosition.BOTTOM:
-            c._label_container.y = c.y;
-            break;
-          case DockPosition.TOP:
-            c._label_container.y = c.y + -this._iconSize / 4;
-            break;
-          case DockPosition.RIGHT:
-            c._label_container.x = c.x;
-            break;
-          case DockPosition.LEFT:
-            c._label_container.x = c.x + -this._iconSize / 4;
-            break;
-        }
-
-        let lsz = c._label.get_transformed_size();
-
-        if (dock.isVertical()) {
-          // c._label.translationY = -lsz[1]; // c._label.height;
-          c._label.translationX = -lsz[0]; // c._label.width;
-        } else {
-          c._label.translationX = -lsz[0]; // c._label.width;
-        }
-
-        if (list._hidden) {
-          // let opacity = c._label.opacity - dt;
-          // if (opacity < 50) opacity = 0;
-          // c._label.opacity = opacity;
-          c._label.opacity = 0;
-        } else {
-          c._label.opacity = 255;
-        }
-        c.rotation_angle_z =
-          (c.rotation_angle_z + (wp.rotation_angle_z || 0)) / 2;
-
-        if (dock.extension.downloads_icon_rotate_labels) {
-          c._label_container.rotation_angle_z = c.rotation_angle_z;
-          if (dock.isVertical()) {
-            c._label_container.rotation_angle_z += 90;
-          }
-        }
-
-        if (!c._icon.first_child) {
-          c.createActualIcon();
+        if (this._animateChild(c, list, dock, dt, speed)) {
+          didAnimate = true;
         }
       });
 
@@ -498,6 +440,94 @@ export const DockItemList = GObject.registerClass(
       }
 
       target._label.hide();
+    }
+
+    // Advances one child toward its next waypoint; returns whether it moved
+    // (children without waypoints are left alone and don't keep the list alive).
+    _animateChild(c, list, dock, dt, speed) {
+      let waypoints = list._hidden ? c._waypointsOut : c._waypointsIn;
+      if (!waypoints || !waypoints.length) {
+        return false;
+      }
+
+      if (list._hidden) {
+        c._icon.reactive = false;
+      }
+
+      let posVector = new Vector([c.x, c.y]);
+      let wp = waypoints[0];
+
+      let dir = wp.subtract(posVector);
+      let mag = dir.magnitude();
+      if (mag > 0) {
+        dir = dir.normalize();
+      }
+      let delta = dir.multiplyScalar(speed * dt);
+      posVector = posVector.add(delta);
+      if (delta.magnitude() > mag || mag == 0) {
+        waypoints.shift();
+        posVector = wp;
+      }
+      // physical pixel grid: a fractional phase makes the picture shimmer
+      let pixelScale = dock._monitor.geometry_scale || 1;
+      c.x = snapToPixel(posVector.x, pixelScale);
+      c.y = snapToPixel(posVector.y, pixelScale);
+
+      this._placeChildLabel(c, list, dock, wp);
+
+      if (!c._icon.first_child) {
+        c.createActualIcon();
+      }
+      return true;
+    }
+
+    // Keeps a child's label container, label and rotation in step with the
+    // child's freshly updated position.
+    _placeChildLabel(c, list, dock, wp) {
+      c._label_container.x = c.x;
+      c._label_container.y = c.y;
+
+      switch (dock._position) {
+        case DockPosition.BOTTOM:
+          c._label_container.y = c.y;
+          break;
+        case DockPosition.TOP:
+          c._label_container.y = c.y + -this._iconSize / 4;
+          break;
+        case DockPosition.RIGHT:
+          c._label_container.x = c.x;
+          break;
+        case DockPosition.LEFT:
+          c._label_container.x = c.x + -this._iconSize / 4;
+          break;
+      }
+
+      let lsz = c._label.get_transformed_size();
+
+      if (dock.isVertical()) {
+        // c._label.translationY = -lsz[1]; // c._label.height;
+        c._label.translationX = -lsz[0]; // c._label.width;
+      } else {
+        c._label.translationX = -lsz[0]; // c._label.width;
+      }
+
+      if (list._hidden) {
+        // let opacity = c._label.opacity - dt;
+        // if (opacity < 50) opacity = 0;
+        // c._label.opacity = opacity;
+        c._label.opacity = 0;
+      } else {
+        c._label.opacity = 255;
+      }
+      c.rotation_angle_z =
+        (c.rotation_angle_z + (wp.rotation_angle_z || 0)) / 2;
+
+      if (dock.extension.downloads_icon_rotate_labels) {
+        c._label_container.rotation_angle_z = c.rotation_angle_z;
+        if (dock.isVertical()) {
+          c._label_container.rotation_angle_z += 90;
+        }
+      }
     }
   }
 );
