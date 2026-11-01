@@ -179,7 +179,7 @@ Built with `PopupMenu.PopupMenu` from the entries of `stackMenuModel.js` (11.9),
 | Entry | Accel | When |
 |---|---|---|
 | Open | Return | always |
-| Open With ▸ (one entry per `Gio.AppInfo.get_all_for_type`, default first) | | one file selected |
+| Open With ▸ (one entry per `Gio.AppInfo.get_all_for_type`, default first) | | exactly one item selected, at least one app |
 | Set as Wallpaper | | one image |
 | - | | |
 | Quick Look | Space | |
@@ -487,7 +487,7 @@ export function rowsOf(shape)             // number[][], the rows of the shape (
 export function applyNav(sel, key, mods, shape)   // key: 'Up'|'Down'|'Left'|'Right'|'Home'|'End'|'PageUp'|'PageDown'; mods: {shift?, ctrl?}
 export function selectAll(shape)
 export function clickSelect(sel, number, mods, shape)   // -> { selection, open }
-export function hoverSelect(sel, number)    // pointer moved onto an item
+export function hoverSelect(sel, number, shape)    // pointer moved onto an item; with `shape`, a number outside 0..count-1 changes nothing
 export function toggleFocus(sel)            // Ctrl+Space
 export function typeSelect(names, buffer, from)   // number, or -1
 export function actTargets(sel)             // the numbers a command acts on
@@ -504,7 +504,7 @@ Rules (decided; do not re-litigate in the implementation):
 6. `toggleFocus`: adds the focus item to `selected` or removes it; `anchor` becomes the focus item.
 7. `clickSelect(sel, number, mods, shape)`: plain click selects only `number` and returns `open: true` (a plain click opens, as in macOS stacks); `ctrl` toggles `number` in `selected`, `anchor = focus = number`, `open: false`; `shift` selects the range from `anchor` (or from 0 when there is none) to `number`, `focus = number`, anchor unchanged, `open: false`.
 8. `hoverSelect`: real pointer motion over an item makes it the only selected one, unless the selection holds more than one item (a multi-selection is not destroyed by the pointer passing over items). Same item: the same selection object content.
-9. `typeSelect(names, buffer, from)`: `names` is the array of item names in reading order, `buffer` the characters typed within the last second (the caller owns the one-second timer). Matching is by prefix, case-insensitive (`toLocaleLowerCase`), ignoring one leading `.`. When `buffer` is one character repeated (`'aaa'`) it cycles: the next match after `from`. Otherwise the first item at or after `from` that matches, wrapping once past the end (the only wrap-around in the module); no match gives -1 (the caller keeps the selection).
+9. `typeSelect(names, buffer, from)`: `names` is the array of item names in reading order, `buffer` the characters typed within the last second (the caller owns the one-second timer). Matching is by prefix, case-insensitive (`toLocaleLowerCase`), ignoring one leading `.`. When `buffer` is one character repeated (`'aaa'`) it cycles: the next match after `from`. Otherwise the first item at or after `from` that matches, wrapping once past the end (the only wrap-around in the module); no match gives -1 (the caller keeps the selection). A `from` outside `0..names.length-1` starts at 0.
 10. `rowsOf` and `applyNav` never throw on `count` 0, on `columns` 0 (treated as 1), or on a `focus` of -1 (the first navigation key then selects the first item, `Up`/`Left`/`End` the last).
 11. `actTargets(sel)`: `selected` when not empty, else `[focus]` when `focus >= 0`, else `[]`.
 12. `reconcile`: keeps the numbers < `count`; if the focus was dropped the new focus is the last remaining selected item or, when none remains, `initialSelection(shape)`'s.
@@ -524,7 +524,7 @@ export function commandFor(press, ctx)   // -> { command, ...args } | null
 
 `ctx = { mode, stack: { kind: 'folder'|'recents', writable }, hasSelection, clipboardHasFiles }` with `mode` one of `'browse'` (default), `'preview'` (Quick Look open), `'rename'` (inline rename entry open), `'menu'` (a context menu open).
 
-`latinKey`: a fixed table of the xkb keycodes of the letters on a QWERTY board (Q=24 W=25 E=26 R=27 T=28 Y=29 U=30 I=31 O=32 P=33 A=38 S=39 D=40 F=41 G=42 H=43 J=44 K=45 L=46 Z=52 X=53 C=54 V=55 B=56 N=57 M=58); any other keycode returns the lower-cased `key` (so `Delete`, `F2`, `space`, `Return` stay as they are).
+`latinKey`: when `key` is a single ASCII letter the result is that letter lower-cased (Dvorak and Colemak keep their printed letters, GTK's rule); only when the layout produces no ASCII letter (Cyrillic, Greek, ...) is the letter looked up in a fixed table of the xkb keycodes of the letters on a QWERTY board (Q=24 W=25 E=26 R=27 T=28 Y=29 U=30 I=31 O=32 P=33 A=38 S=39 D=40 F=41 G=42 H=43 J=44 K=45 L=46 Z=52 X=53 C=54 V=55 B=56 N=57 M=58); any other keycode returns the lower-cased `key` (so `Delete`, `F2`, `space`, `Return` stay as they are).
 
 `commandFor` returns `null` (the caller propagates the event, never consumes it) for: any press with `super`; presses of modifier keys themselves (`Shift_L`, `Shift_R`, `Control_L`, `Control_R`, `Alt_L`, `Alt_R`, `Meta_L`, `Meta_R`, `Super_L`, `Super_R`, `ISO_Level3_Shift`, `ISO_Level5_Shift`, `ISO_Next_Group`, `ISO_Prev_Group`, `Mode_switch`, `Caps_Lock`, `Num_Lock`, `Scroll_Lock`, `Hyper_L`, `Hyper_R`); everything when `mode` is `'menu'`. So the layout switch (Super+Space, Alt+Shift, Ctrl+Shift, Caps Lock) and a tap of Super reach the Shell untouched.
 
@@ -598,7 +598,7 @@ export class UndoLog {
   canUndo(); canRedo()
   undo()                // -> a plan to execute, or null
   redo()
-  settle(plan, ok)      // the caller reports whether the plan ran; a failed plan is dropped from the log
+  settle(plan, ok, actualItems?)   // the caller reports whether the plan ran; a failed plan is dropped from the log; on success `actualItems` ([{from,to}], what really happened) replaces the items of the plan's entry, so a redo that renamed a destination is undone against the real path
   clear()
   describe(entry)       // 'Moved 3 items to Trash' for the toast
 }
@@ -624,8 +624,8 @@ export function addLink(links, link)       // new array; existing key keeps its 
 export function removeLink(links, key)
 ```
 
-`classifyPayload` kinds, first match wins: `files` (a `text/uri-list` or `x-special/gnome-copied-files` or `text/plain` whose every line is a `file://` URI), `url` (`text/x-moz-url`, `_NETSCAPE_URL`, or a `text/uri-list`/`text/plain` with http(s) URLs only), `text-url` (`text/plain` or `text/html` whose text contains a URL), `image` (only an `image/*` payload), `text` (any other text), `none`. `links` carries `{url, title}` objects (title '' when unknown); `uris` the `file://` URIs; `text` the plain text. Preference for the title: `text/x-moz-url` second line, `_NETSCAPE_URL` second line, the text of the first `<a href="...">...</a>` of `text/html` whose href equals the URL, then ''. `text/uri-list` with several http URLs yields several links. Titles are trimmed, whitespace-collapsed and capped at 120 characters.
-`classifyFile`: `isDir` -> `folder`; `contentType` `application/x-desktop` or a name ending `.desktop` -> `app`; `image/*` -> `image`; `isLocal` false -> `remote`; else `file`.
+`classifyPayload` kinds, first match wins: `files` (a `text/uri-list` or `x-special/gnome-copied-files` whose every line is a `file://` URI; a `text/plain` of file URIs is only `text`, a web page controls text/plain and must not gain authority over trash or move), `url` (`text/x-moz-url`, `_NETSCAPE_URL`, or a `text/uri-list`/`text/plain` with http(s) URLs only), `text-url` (`text/plain` or `text/html` whose text contains a URL), `image` (only an `image/*` payload), `text` (any other text), `none`. `links` carries `{url, title}` objects (title '' when unknown); `uris` the `file://` URIs; `text` the plain text. Preference for the title: `text/x-moz-url` second line, `_NETSCAPE_URL` second line, the text of the first `<a href="...">...</a>` of `text/html` whose href equals the URL, then ''. `text/uri-list` with several http URLs yields several links. Titles are trimmed, whitespace-collapsed and capped at 120 characters.
+`classifyFile`: `isLocal` false -> `remote` (checked first, so a remote image, folder or launcher is never trashed or pinned); then `isDir` -> `folder`; `contentType` `application/x-desktop` or a name ending `.desktop` -> `app`; `image/*` -> `image`; `isLocal` false -> `remote`; else `file`.
 `dropActionFor(kind, target)` is the whole decision table below as a pure function (the table is repeated in `tests/drop_classify_check.js`).
 `normalizeUrl`: trims; lower-cases scheme and host; removes the default port (80 for http, 443 for https); drops a lone trailing `/` of an empty path only when the input had no path; keeps path, query and fragment verbatim; a bare `host.tld/path` (a dot, no spaces, no scheme) gets `https://`; `javascript:`, `data:`, `file:`, `vbscript:`, any other scheme (compared explicitly, never through an object lookup: `constructor://x` is not a link), relative and empty input return `null`; **a backslash anywhere makes the input invalid** (browsers read `\` as `/`, so `https://evil.example\@good.example/` would show one host and open another); internationalised hosts are left as given. `linkKey(url)`: the normalized URL without the fragment and with the trailing slashes of the **path** removed (the query is kept verbatim: `?path=/` and `?path=` are two links). `addLink` fills a missing, empty or whitespace-only title (judged as `urlTitle` does) from the link being added and never replaces a real title. `urlTitle({url, title})`: the title, else the host without a leading `www.`, else the URL.
 
@@ -652,19 +652,19 @@ export function dropSlot(slots, x, y, vertical, opts)   // slots: [{ role, x, y,
 //   -> { kind: 'onto', index } | { kind: 'between', index } | { kind: 'none' }
 ```
 
-`opts.ontoShare` (default 0.5): the middle `ontoShare` of an item along the dock's axis is "onto" it when that item `accepts` the drop (`accepts` true), otherwise the whole item is split at its midline into the gap before and the gap after. A pointer in the gap between two items is `between` with `index` the insertion index (the number of items before the gap). Off the dock (beyond its bounds by more than `opts.margin`, default 0) is `none`. Items whose `accepts` is false never produce `onto`.
+`opts.ontoShare` (default 0.5): the middle `ontoShare` of an item along the dock's axis is "onto" it when that item `accepts` the drop (`accepts` true), otherwise the whole item is split at its midline into the gap before and the gap after. A pointer in the gap between two items is `between` with `index` the insertion index (the number of items before the gap). Off the dock (beyond its bounds by more than `opts.margin`, default 0) is `none`. Items whose `accepts` is false never produce `onto`. A slot with a non-finite x, y, w or h, or a w or h not above 0, is unmeasured: ignored for the bounds, never hit, but its index still counts; no measured slot gives `none`.
 
 ### 11.8 `folderStackEntries.js`: edits of the `folder-stacks` setting
 
 ```js
 export function normalizeEntries(raw)                  // raw JSON value -> array of entries (objects or strings); anything else -> []
 export function entryPath(entry)                       // string path of an entry
-export function addFolder(entries, path, index, env)   // env: { normalize(path) }; new array
+export function addFolder(entries, path, index, env, fields)   // env: { normalize(path) }; fields: optional extra entry fields (never override `path`); new array
 export function removeFolder(entries, path, env)
 export function moveFolder(entries, from, to)
 ```
 
-`addFolder` appends (or inserts at `index` when given, clamped) a folder as `{ path }` object unless an entry already shows the same normalized path (then the entries are returned unchanged, same array). `removeFolder` removes every entry of that normalized path. `normalizeEntries` drops entries that are neither a non-empty string nor an object with a non-empty string `path`. Entry objects keep every field they have (`view`, `sort`, `display`, `group`, `title`, `icon`, and fields this document adds). No function mutates its input.
+`addFolder` appends (or inserts at `index` when given, clamped) a folder as a `{ ...fields, path }` object (`{ path }` without `fields`; section 7.2 passes `display`, `view`, `sort`, `group`) unless an entry already shows the same normalized path (then the entries are returned unchanged, same array). `removeFolder` removes every entry of that normalized path. `normalizeEntries` drops entries that are neither a non-empty string nor an object with a non-empty string `path`. Entry objects keep every field they have (`view`, `sort`, `display`, `group`, `title`, `icon`, and fields this document adds). No function mutates its input.
 
 ### 11.9 `stackMenuModel.js`: what the context menus hold
 
