@@ -1,6 +1,6 @@
 # Stack interactions: selection, keyboard, Quick Look, clipboard, drag and drop
 
-Design of everything the user asked for on 2026-11-01 about the dock's stack dropdowns (Downloads, Screenshots, Recents, any folder). It is written to be implemented by independent agents in parallel worktrees: every slice names its files, its hooks into code other agents are editing, its tests and its visual proof. Umbrella ticket: [#50](https://github.com/alex-mextner/hyperdock/issues/50); the slice tickets are listed in section 13.
+Design of everything the user asked for on 2026-11-01 about the dock's stack dropdowns (Downloads, Screenshots, Recents, any folder). It is written to be implemented by independent agents in parallel worktrees: every slice names its files, its hooks into code other agents are editing, its tests and its visual proof. Umbrella ticket: [#50](https://github.com/alex-mextner/hyperdock/issues/50); the slice tickets (#53 to #73) are listed in section 13.
 
 How claims are marked: **[verified]** = reproduced or proven by an experiment in an isolated nested headless gnome-shell (the scratch probes are summarised in section 2 and 3, the logs quoted), **[source]** = read in the named source file, **[macOS]** = documented macOS behaviour with the cited page, **[inference]** = reasoned, not observed (each one has a test or ticket step that settles it).
 
@@ -39,13 +39,14 @@ Method: a nested headless gnome-shell (`gnome-shell --headless --no-x11 --virtua
 
 **Root constraint: a Shell extension cannot originate a Wayland drag [verified/source].** `Meta.Dnd` has no methods (enumerated with GI), `imports.ui.dnd` only drags between Shell actors, and Wayland's `wl_data_device.start_drag` needs a client surface that owns the pointer's implicit grab serial. Section 5 holds the technique that works.
 
-Evidence (nested shell, base 37cfbee): fan mid-drag, the fan vanished and the file opened; grid mid-drag, the dropdown unchanged. Probe log lines: `{"view":"fan","step":"drag-out","dragEvents":0,...,"opened":"<the file>","fanOpenAfter":false,"hasDelegate":false}` and `{"view":"grid","step":"drag-out","dragEvents":0,"newActorsMidDrag":[],"opened":"","panelOpenAfter":true,"hasDelegate":false}`.
+Evidence (nested shell, base 37cfbee): fan mid-drag, the fan vanished and the file opened ([screenshot](images/stack-interactions/fan-drag-mid.png)); grid mid-drag, the dropdown unchanged ([screenshot](images/stack-interactions/grid-drag-mid.png)). Probe log lines: `{"view":"fan","step":"drag-out","dragEvents":0,...,"opened":"<the file>","fanOpenAfter":false,"hasDelegate":false}` and `{"view":"grid","step":"drag-out","dragEvents":0,"newActorsMidDrag":[],"opened":"","panelOpenAfter":true,"hasDelegate":false}`.
 
 ### 2.2 R2: right click does nothing (and in the fan it opens the file)
 
 - **Fan [verified]:** the same `button-press-event` handler has no `get_button()` check, so a right press opens the file exactly as a left press (probe: `step:"right-click"` logged `opened: <the file>`, `fanOpen: false`; no menu actor).
 - **Grid and List [verified]:** `St.Button` has `button-mask` ONE (left only), nothing else listens for button 3, and `StackPanel` handles only presses outside the popover (stackPanel.js:294-301). Probe: `panelOpen: true`, `newActors: []`, nothing opened.
 - The only context menu in the area is the *dock item's* (`item._menu`: Sort by / Display as / View content as / Group by / Open), built by `addStackMenu` (stackPanel.js:170); a file inside a dropdown never had one.
+- Evidence: [fan after a right click](images/stack-interactions/fan-rightclick.png) (the fan is gone, the file opened), [grid after a right click](images/stack-interactions/grid-rightclick.png) (nothing changed).
 - **Fix shape (section 4.7):** buttons accept `ONE|TWO|THREE`; the secondary click (and the Menu key, and Shift+F10) opens a `PopupMenu` built from `stackMenuModel.itemMenu` anchored at the pointer; the fan stops activating on press.
 
 ### 2.3 R3: names
@@ -56,6 +57,7 @@ Evidence (nested shell, base 37cfbee): fan mid-drag, the fan vanished and the fi
 - Fan: `l.name.replace(/(.{32})..+/, '$1...')` (dockItemMenu.js:204) keeps the first 32 characters: `Screenshot from 2026-10-30 10-13...`, again without the time.
 - List: `EllipsizeMode.END`: `Screenshot from 2026-10-30 10-13-…`.
 - Nothing shows the full name of the selected or hovered file.
+- Screenshots: [Grid](images/stack-interactions/grid-names.png), [List](images/stack-interactions/list-names.png), [Fan](images/stack-interactions/fan-names.png) (also the evidence of the inverted fan order below).
 
 The grid-speed work (ticket [#37](https://github.com/alex-mextner/hyperdock/issues/37), `cellName` in `stackLayout.js` on branch dropdown-grid-speed) already rebuilds the grid label as two short lines keeping the start and the end of the name; section 4.8 adds what it does not cover (fan, list, a caption with the full name and the file's details).
 
@@ -582,7 +584,7 @@ export function uniqueName(name, taken, style)  // taken: Set<string> | (name) =
 ```js
 export class UndoLog {
   constructor(limit = 20)
-  push(entry)           // entry: { op, items: [{from, to}], label? }
+  push(entry)           // entry: { op, items: [{from, to}] }
   canUndo(); canRedo()
   undo()                // -> a plan to execute, or null
   redo()
@@ -663,6 +665,20 @@ export function backgroundMenu(ctx)   // ctx: { stack: { kind, writable, view, s
 
 Both return an array of menu entries: `{ id, label, enabled, accel?, children? }` or the string `'-'` for a separator; no gi types. The exact entries are in section 4.7; `id`s are the command names of 11.2 (plus `openWith`, `sort`, `group`, `view` for the submenu parents and `sort:<value>`, `group:<value>`, `view:<value>`, `openWith:<appId>`, `wallpaper` for their entries). Disabled commands stay in the menu greyed; only an empty Open With is dropped; with `inTrash` Move to Trash becomes Delete Permanently (`deletePermanently`). Empty groups never leave two adjacent separators or a separator at either end.
 
+### 11.10 Implementation notes: choices the implementers made where 11.1-11.9 were silent
+
+These are now behaviour covered by the checks; wave-1 code relies on them.
+
+- **stackSelection**: `selectAll` anchors on the first item and focuses the last; Shift navigation with no anchor starts from the old focus (else the target) and stores that as the anchor; Shift+click keeps the anchor unchanged, even -1, and starts from the first item of the reading order; PageUp with no focus selects the last item; type-to-select cycling needs at least two identical characters (counted by code point); a click or hover on a number outside the shape leaves the selection unchanged; `groupSizes` that do not add up to `count` are cut at `count` and the leftover items form a last batch; `reconcile` keeps a focus of -1 and turns a dropped anchor into the focus; in the fan "reading order" is the visual order and `Left`/`Right` are `Down`/`Up` steps.
+- **stackHotkeys**: the `nav` command names its key in the `applyNav` vocabulary (`PageUp`, `PageDown`, not `Page_Up`); Ctrl+Shift+<nav key> and Alt+<nav key> are `null`; the preview and rename modes match the key alone (modifiers are ignored, so Ctrl+Space still closes the preview); text made only of whitespace is not printable (Shift+space is `null`); a bare space with no selection is `nop`; a missing `ctx.stack` is neither a folder nor a recents stack.
+- **stackClipboard**: `parseCopiedFiles` drops every trailing blank line and any run of trailing NULs but a blank line between URIs is a malformed payload (`null`); `parseUriList` also accepts a lone CR as a separator; `fileUri` does not resolve relative paths (callers pass absolute ones).
+- **uniqueName**: only ASCII letters and digits count as an extension; a ` 1` suffix is not a series marker (`a 1.png` gives `a 1 2.png`); the `copy` series of `a 2.png` gives `a 2 copy.png`; after 10000 candidates the result is candidate 10001.
+- **undoLog**: plans carry an extra `id` so `settle(plan, false)` can find the entry and its redo twin; `push` ignores an entry whose op has no inverse (`restore`, unknown, `null`); the inverse of `copy` and of `mkdir` is a `trash` plan with items `[{ from: <the created path> }]`; `redo` also trims to the limit; `describe` returns `Created folder` for `mkdir`, `Restored N item(s)` for `restore` and `''` for an unknown op.
+- **dropClassify / webLinks**: `dropActionFor` treats `mount` as an alias of `stack`; `classifyFile` tests directory and `.desktop` before `remote`, so a remote image stays `image`; a missing `isLocal` counts as local; a `text/uri-list` that mixes a file and a link is `text-url`; image plus other text is `text`; `image-data` is the glue's name for a file-less image. `normalizeUrl` never invents a slash (`https://example.com:443` gives `https://example.com`, `HTTP://Example.COM:80/` gives `http://example.com/`); a bare host needs a dot and a last label starting with a letter (`file.txt` becomes `https://file.txt`, accepted); a URL inside prose needs an explicit `http(s)://`, and trailing `. , ; : ! ? ' ] }` and an unbalanced `)` are stripped; `addLink` always returns a new array and never replaces an existing non-empty title.
+- **dropSlot**: items own `[start, end)` along the axis and the last item also its end coordinate; the pointer must also lie within the dock's extent across the axis; `accepts` must be exactly `true`.
+- **folderStackEntries**: `addFolder`, `removeFolder` and `moveFolder` return the same array when nothing changes; garbage entries are kept and never match; `addFolder` stores the path as given.
+- **stackMenuModel**: `ctx.kind` is ignored; Set as Wallpaper is enabled only for `count === 1`; `inTrash` swaps Move to Trash for Delete Permanently (`deletePermanently`); there is no Redo entry; the background Open in Files is `showInFiles` with no accel; every Sort/Group/View child has a boolean `checked`.
+
 ## 12. Tests, settings and proofs
 
 ### 12.1 Pure checks (`make test`, no Shell)
@@ -716,26 +732,26 @@ Wave 0 is this branch (feat/stack-interactions): the document and the pure modul
 
 | Slice | Ticket | Owns (new files) | Touches | Depends on |
 |---|---|---|---|---|
-| S0 pure modules + this document | {{S0}} | `stackSelection.js stackHotkeys.js stackClipboard.js uniqueName.js undoLog.js dropClassify.js webLinks.js dropSlot.js folderStackEntries.js stackMenuModel.js` + their checks | `docs/CI.md` | - |
-| S1 default selection, arrows, hover, multi-select in Grid and List | {{S1}} | `stackInteraction.js` | H1-H4 (`stackPanel.js`) | S0, #36, #37 |
-| S2 Fan: click instead of press, buttons, keys, selection | {{S2}} | `fanInteraction.js` | H5-H7 (`dockItemMenu.js`) | S1 |
-| S3 right click: item and background menus (bug R2) | {{S3}} | `stackContextMenu.js` | H3, H5 | S0, S1 |
-| S4 readable names and the caption (bug R3) | {{S4}} | `stackCaption.js` | H7, H8 | #37 |
-| S5 file operations, clipboard glue, toast, dialogs | {{S5}} | `stackFileOps.js stackClipboardGlue.js stackToast.js stackDialogs.js` | - | S0 |
-| S6 hotkeys on the selection: cut, copy, paste, delete, rename, undo | {{S6}} | (in `stackInteraction.js`) | - | S1, S5 |
-| S7 Quick Look: overlay and Sushi | {{S7}} | `stackPreview.js stackSushi.js` | `stackInteraction.js` (mode `preview`) | S1 |
-| S8 drag out of a dropdown (bug R1) | {{S8}} | per section 5 | H3, H5 | S1 |
-| S9 drop onto a group, transfer rules, `file-drops` on by default (R8) | {{S9}} | `stackTransfer.js` | H10 | S0, S5 |
-| S10 drop onto the dock: folders become stacks (R9, R10) | {{S10}} | `dockDropMarker.js` | H10, `stackDock.js` | S9 |
-| S11 drop onto the dock: apps join the favourites, files open in the app under the pointer | {{S11}} | - | H10 | S9 |
-| S12 web link dock items and dropping URLs (R9) | {{S12}} | `webLinkDock.js` | H9, H10, H11 | S0, S9 |
-| S13 drop onto the dock: files, images, text, other things | {{S13}} | - | H10 | S12 |
-| S14 folders inside dropdowns: navigation, back button, count badge (R10) | {{S14}} | `stackNav.js` | H3 | S1 |
-| S15 spring-loading: hovering a stack for 600 ms during a drag opens it | {{S15}} | - | `interactions.js`, H10 | S9 |
-| F1 fan draws the newest item nearest the dock | {{F1}} | - | `dockItemMenu.js` | - |
-| F2 multi-format clipboard helper (text/uri-list next to gnome-copied-files) | {{F2}} | `apps/clipboard.js` | - | S5 |
-| F3 sub-folder piles inside dropdowns | {{F3}} | - | - | S14 |
-| F4 opt-in favicon and page-title fetch for web links | {{F4}} | - | - | S12 |
-| F5 rubber-band selection in Grid | {{F5}} | - | - | S1 |
+| S0 pure modules + this document | [#53](https://github.com/alex-mextner/hyperdock/issues/53) | `stackSelection.js stackHotkeys.js stackClipboard.js uniqueName.js undoLog.js dropClassify.js webLinks.js dropSlot.js folderStackEntries.js stackMenuModel.js` + their checks | `docs/CI.md` | - |
+| S1 default selection, arrows, hover, multi-select in Grid and List | [#54](https://github.com/alex-mextner/hyperdock/issues/54) | `stackInteraction.js` | H1-H4 (`stackPanel.js`) | S0, #36, #37 |
+| S2 Fan: click instead of press, buttons, keys, selection | [#55](https://github.com/alex-mextner/hyperdock/issues/55) | `fanInteraction.js` | H5-H7 (`dockItemMenu.js`) | S1 |
+| S3 right click: item and background menus (bug R2) | [#56](https://github.com/alex-mextner/hyperdock/issues/56) | `stackContextMenu.js` | H3, H5 | S0, S1 |
+| S4 readable names and the caption (bug R3) | [#57](https://github.com/alex-mextner/hyperdock/issues/57) | `stackCaption.js` | H7, H8 | #37 |
+| S5 file operations, clipboard glue, toast, dialogs | [#58](https://github.com/alex-mextner/hyperdock/issues/58) | `stackFileOps.js stackClipboardGlue.js stackToast.js stackDialogs.js` | - | S0 |
+| S6 hotkeys on the selection: cut, copy, paste, delete, rename, undo | [#59](https://github.com/alex-mextner/hyperdock/issues/59) | (in `stackInteraction.js`) | - | S1, S5 |
+| S7 Quick Look: overlay and Sushi | [#60](https://github.com/alex-mextner/hyperdock/issues/60) | `stackPreview.js stackSushi.js` | `stackInteraction.js` (mode `preview`) | S1 |
+| S8 drag out of a dropdown (bug R1) | [#61](https://github.com/alex-mextner/hyperdock/issues/61) | `stackDragOut.js apps/drag-out.js` | H3, H5 | S1 |
+| S9 drop onto a group, transfer rules, `file-drops` on by default (R8) | [#62](https://github.com/alex-mextner/hyperdock/issues/62) | `stackTransfer.js` | H10 | S0, S5 |
+| S10 drop onto the dock: folders become stacks (R9, R10) | [#63](https://github.com/alex-mextner/hyperdock/issues/63) | `dockDropMarker.js` | H10, `stackDock.js` | S9 |
+| S11 drop onto the dock: apps join the favourites, files open in the app under the pointer | [#64](https://github.com/alex-mextner/hyperdock/issues/64) | - | H10 | S9 |
+| S12 web link dock items and dropping URLs (R9) | [#65](https://github.com/alex-mextner/hyperdock/issues/65) | `webLinkDock.js` | H9, H10, H11 | S0, S9 |
+| S13 drop onto the dock: files, images, text, other things | [#66](https://github.com/alex-mextner/hyperdock/issues/66) | - | H10 | S12 |
+| S14 folders inside dropdowns: navigation, back button, count badge (R10) | [#67](https://github.com/alex-mextner/hyperdock/issues/67) | `stackNav.js` | H3 | S1 |
+| S15 spring-loading: hovering a stack for 600 ms during a drag opens it | [#68](https://github.com/alex-mextner/hyperdock/issues/68) | - | `interactions.js`, H10 | S9 |
+| F1 fan draws the newest item nearest the dock | [#69](https://github.com/alex-mextner/hyperdock/issues/69) | - | `dockItemMenu.js` | - |
+| F2 multi-format clipboard helper (text/uri-list next to gnome-copied-files) | [#70](https://github.com/alex-mextner/hyperdock/issues/70) | `apps/clipboard.js` | - | S5 |
+| F3 sub-folder piles inside dropdowns | [#71](https://github.com/alex-mextner/hyperdock/issues/71) | - | - | S14 |
+| F4 opt-in favicon and page-title fetch for web links | [#72](https://github.com/alex-mextner/hyperdock/issues/72) | - | - | S12 |
+| F5 rubber-band selection in Grid | [#73](https://github.com/alex-mextner/hyperdock/issues/73) | - | - | S1 |
 
-Parallelism: after S0, **S5, S4, S9 (design part) and F1** do not depend on the popover branches' merge and can start at once; S1 and S2 start after #36 and #37 merge; S3, S6, S7, S8, S14 follow S1; S10-S13 and S15 follow S9. Two slices never edit the same existing file at the same hook: `stackPanel.js` is edited by S1 (H1-H4) first, then S3/S4/S8 add one line each at H3/H8; `dockItemMenu.js` by S2 first, then S3/S8; `fileDrops.js` by S9 first, then S10-S13, S15 add target kinds.
+Parallelism: after S0, **S5, S9 and F1** do not depend on the popover branches' merge and can start at once; S1 and S2 start after #36 and #37 merge; S3, S6, S7, S8, S14 follow S1; S10-S13 and S15 follow S9. Two slices never edit the same existing file at the same hook: `stackPanel.js` is edited by S1 (H1-H4) first, then S3/S4/S8 add one line each at H3/H8; `dockItemMenu.js` by S2 first, then S3/S8; `fileDrops.js` by S9 first, then S10-S13, S15 add target kinds.
