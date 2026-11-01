@@ -40,3 +40,7 @@ Root cause, reproduced in a nested shell with a virtual pointer (`tools/stacks-s
 
 - Pure rules: `tests/stack_*_check.js` (run by `make test`).
 - Real input: `tools/stacks-shell.sh` boots a nested headless shell on a scratch data dir, clicks the stack items and the entries of their dropdowns with a virtual pointer (a stub `xdg-open` and stub app launchers prove the click arrived), checks the batch headers, the group's order and the single separator, and saves screenshots to `stacks-out/shots`.
+
+## What comes next
+
+Selection, keyboard, Quick Look, clipboard, drag out, drops onto stacks and the dock, folders and web links as dock items are designed in [STACK_INTERACTIONS.md](STACK_INTERACTIONS.md) (umbrella ticket [#50](https://github.com/alex-mextner/hyperdock/issues/50)).
