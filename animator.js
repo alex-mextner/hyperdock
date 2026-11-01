@@ -11,6 +11,7 @@ import { smoothScaling } from './textureFilters.js';
 import { IconNormalizer } from './iconNormalizer.js';
 import { DockItemDotsOverlay, DockItemBadgeOverlay } from './dockItems.js';
 import { live } from './probe.js';
+import { animatedEdgeDistance } from './indicatorSpacing.js';
 import {
   advancePresence,
   easedOffset,
@@ -444,8 +445,8 @@ export let Animator = class {
     run.edgeDistance = dock._edge_distance;
     run.rise = ext.animation_rise * ANIM_ICON_RAISE;
     run.magnify = ext.animation_magnify * ANIM_ICON_SCALE;
-    if (run.animated && run.edgeDistance < 0) {
-      run.edgeDistance = 0;
+    if (run.animated) {
+      run.edgeDistance = animatedEdgeDistance(run.edgeDistance, dock._outerGrowth);
     }
     run.scaleAtMax = 1.0 + run.magnify;
 

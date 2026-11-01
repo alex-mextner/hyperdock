@@ -97,10 +97,12 @@ function updateStruts(dock, run) {
   const bg = dock._background;
   const struts = dock.struts;
   const grow = iconSize * 0.2 * scaleFactor;
-  const pad = bg._padding * scaleFactor;
+  // the dash sits `edgeDistance` off the edge, the platter reaches the
+  // lift further (dock._outerGrowth): it is the platter the struts follow
+  const gap = edgeDistance - (dock._outerGrowth || 0);
   const autohide = dock.extension.autohide_dash;
   if (vertical) {
-    struts.width = bg.width + grow + edgeDistance - pad;
+    struts.width = bg.width + grow + gap;
     struts.height = dock.height;
     if (autohide) {
       struts.y = bg.y + dock._monitor.y;
@@ -109,7 +111,7 @@ function updateStruts(dock, run) {
     struts.x = edge.right ? dock.x + dock.width - struts.width : dock.x;
   } else {
     struts.width = dock.width;
-    struts.height = bg.height + grow + edgeDistance - pad;
+    struts.height = bg.height + grow + gap;
     if (autohide) {
       struts.x = bg.x + dock._monitor.x;
       struts.width = bg.width;

@@ -31,7 +31,7 @@ or on the natural size of those actors.
    `itemSize = floor(iconSizeSpaced * scaleFactor)`.
 4. Every icon is set to `itemSize` × `itemSize`. In a horizontal dock,
    separators are capped at `itemSize`.
-5. The dash's cross-axis size is pinned to `itemSize`; the main axis is left
+5. (Indicator spacing: the dash is then lifted off the screen edge by `outerGrowth()` and the platter reaches that far past it, see "Indicator spacing" in ANIMATION.md.) The dash's cross-axis size is pinned to `itemSize`; the main axis is left
    natural (`-1`). The platter (`DockBackground`) is centred on the dash's
    cross axis, so separators sit centred on it through `CENTER` alignment and
    equal cross-axis margins (`_inspectIcon()`). The animator moves them only

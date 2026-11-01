@@ -26,6 +26,7 @@ import { get_distance_sqr, get_distance, isInRect, isOverlapRect } from './utils
 import { syncOpenAtLogin, hideOpenAtLogin } from './openAtLogin.js';
 import { orderExtraIcons, syncFolderStacks, syncRecentsStack } from './stackDock.js';
 import { computeIconMetrics } from './iconMetrics.js';
+import { outerGrowth, platterPadding } from './indicatorSpacing.js';
 import {
   filterDashRunningApps,
   onActiveWorkspace,
@@ -1560,6 +1561,15 @@ export let Dock = GObject.registerClass(
       let itemSize = Math.floor(iconSizeSpaced * scaleFactor);
       this._applyItemSize(itemSize, iconStyle, vertical);
 
+      // the platter reaches past the items far enough for the running dots;
+      // the dash is that much further from the screen edge (indicatorSpacing.js)
+      this._outerGrowth = outerGrowth(
+        iconSize * scaleFactor,
+        itemSize,
+        platterPadding(iconSize, this.extension.dock_padding, scaleFactor)
+      );
+      this._edge_distance += this._outerGrowth;
+
       //! check with multi-monitor and scaled displays
       this.x = m.x;
       this.y = m.y;
@@ -1573,10 +1583,11 @@ export let Dock = GObject.registerClass(
       // computation derived from animation scale
       let magnify = this.extension.animation_magnify * 1.8;
       let fp = iconSize * 2 + iconSize * (0.6 * (1 + magnify));
+      // the lifted dash and its deeper platter need that much more room
       if (vertical) {
-        this.width = fp * scaleFactor;
+        this.width = fp * scaleFactor + this._outerGrowth;
       } else {
-        this.height = fp * scaleFactor;
+        this.height = fp * scaleFactor + this._outerGrowth;
       }
 
       this._snapToContainerEdge(m, this, true);
