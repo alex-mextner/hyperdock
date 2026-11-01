@@ -6,6 +6,7 @@
 // the item behind an index may change between frames, so the functions here
 // rebind a renderer to whatever icon it is handed (bindRenderer). No Shell
 // imports; `frame` is the animator's per-frame state (see Animator._beginRun).
+import { zeroTranslation } from './animatorBounce.js';
 import { easeToward, sizeStep, slotOffsets } from './animatorMath.js';
 import { IDENTITY_NORMALIZATION, snapToPixel } from './iconGeometry.js';
 
@@ -54,19 +55,29 @@ export function resolveSource(dock, icon, source) {
  * removed, the ones after it take over their neighbour's renderer. St.Icon keeps
  * showing the old image until the new one has loaded (a frame or more for file
  * icons, e.g. the glass Trash), so it is dropped first.
+ *
+ * A renderer comes to rest here unless `icon` is bouncing: a bounce that was cut off
+ * must not leave its offset (either axis) on the renderer, which the badge, the
+ * counter and the running dots follow. While `icon` bounces its renderer shows the
+ * icon's offset, whatever that renderer was doing before (a rebound one, or a hidden
+ * one that still carries the icon it drew last).
  */
 export function bindRenderer(renderer, icon) {
-  if (renderer._icon && renderer._icon !== icon._icon) {
+  const rebound = renderer._icon !== icon._icon;
+  if (renderer._icon && rebound) {
     renderer.gicon = null;
   }
   renderer._icon = icon._icon;
   renderer.set_style_class_name('');
 
-  if (icon._appwell?._bounce) {
-    icon._appwell._bounce = false;
-  } else {
-    renderer.translationY = 0;
+  const appwell = icon._appwell;
+  if (!appwell?._bounce) {
+    zeroTranslation(renderer);
+    return;
   }
+  appwell._bounce = false;
+  renderer.translationX = appwell.translationX;
+  renderer.translationY = appwell.translationY;
 }
 
 /** Shows `source` on `renderer`. */

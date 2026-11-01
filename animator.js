@@ -19,7 +19,7 @@ import {
   presenceOpenStep,
   textureBaseSize,
 } from './animatorMath.js';
-import { bounceFrames, bounceTravel } from './animatorBounce.js';
+import { BounceRun, bounceTravel, zeroTranslation } from './animatorBounce.js';
 import { fadeDockIn, resolvePointer, slideDash, updateBackground } from './animatorDash.js';
 import { LabelDwell, labelShown, updateLabel } from './animatorLabel.js';
 import {
@@ -167,12 +167,15 @@ export let Animator = class {
     this._badges = [];
   }
 
-  // hides the renderer, dots and badge of the slots in [from, to)
+  // hides the renderer, dots and badge of the slots in [from, to), at rest: the
+  // overlays follow the renderer's translation, so a bounce cut short must not
+  // leave its offset on a slot that is shown again later
   _hideSlots(from, to) {
     for (let i = from; i < to; i++) {
       this._renderers[i].visible = false;
       this._dots[i].visible = false;
       this._badges[i].visible = false;
+      zeroTranslation(this._renderers[i]);
     }
   }
 
@@ -565,7 +568,7 @@ export let Animator = class {
     // consumed below, after the renderer has seen it.
     if (icon._appwell) {
       run.didBounce = icon._appwell._bounce;
-      if (!run.didBounce) icon._appwell.translationY = 0;
+      if (!run.didBounce) zeroTranslation(icon._appwell);
     }
   }
 
@@ -649,27 +652,44 @@ export let Animator = class {
   // hops: number of bounces; defaults to the animation-bounce-frequency pick
   bounceIcon(appwell, hops = null) {
     let dock = this.dock;
+    const appId = Compat.getAppId(appwell);
     // lets other triggers for the same launch (dock click, then the app's
     // STARTING state) tell that a bounce is already under way
     appwell._bounceAt = Date.now();
-    appwell.translation_y = 0;
+    // a restart: the bounce under way gives way and leaves the icon at rest
+    this._endBounces((run) => run.appId === appId);
+    zeroTranslation(appwell);
 
     const count =
       hops ?? [3, 1, 2, 3][dock.extension.animation_bounce_frequency || 0];
+    // no hop to run (a frequency outside the list): the timer would take an empty
+    // frame list for a subscriber of its own and keep it for good
+    if (!(count >= 1)) return;
+    const run = new BounceRun(this, appId);
     const bounce = dock.extension._hiTimer.runAnimation(
-      bounceFrames(this, Compat.getAppId(appwell), bounceTravel(dock), count)
+      run.frames(bounceTravel(dock), count),
+      run.settings()
     );
     // only finished ones leave the timer on their own
-    this._bounces ??= new Set();
-    this._bounces.forEach((b) => {
+    this._bounces ??= new Map();
+    for (const b of this._bounces.keys()) {
       if (b._time >= b._duration) this._bounces.delete(b);
+    }
+    this._bounces.set(bounce, run);
+  }
+
+  // takes the bounces `matches` picks off the timer and puts their icons at rest
+  _endBounces(matches) {
+    this._bounces?.forEach((run, bounce) => {
+      if (!matches(run)) return;
+      bounce._timer?.cancel(bounce);
+      run.cancel();
+      this._bounces.delete(bounce);
     });
-    this._bounces.add(bounce);
   }
 
   // for the dock's _cancelTimers(): a bounce drives the dock's icons
   cancelBounces() {
-    this._bounces?.forEach((b) => b._timer?.cancel(b));
-    this._bounces?.clear();
+    this._endBounces(() => true);
   }
 };

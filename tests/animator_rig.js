@@ -24,6 +24,9 @@ export const writes = {
   },
 };
 
+// property writes to actors that were already destroyed (GJS logs those as errors)
+export const disposedWrites = [];
+
 // Pool actors share their production names (d2daIcon, d2daDotsOverlay, ...): a
 // counter per name tells the slots apart in the trace. Reset for each loaded animator.
 const counters = new Map();
@@ -63,6 +66,7 @@ export class FakeActor {
   }
 
   _set(prop, value) {
+    if (this._disposed) disposedWrites.push(`${this.name}.${prop}`);
     if (this._v[prop] === value) return;
     this._v[prop] = value;
     record(this.name, prop, value);
@@ -87,7 +91,7 @@ export class FakeActor {
   get_transformed_position() { return [this.x, this.y]; }
   get_transformed_size() { return [this.width * this.scaleX, this.height * this.scaleY]; }
   connect() { return 1; }
-  destroy() {}
+  destroy() { this._disposed = true; }
   connectObject(...args) {
     const owner = args.pop();
     for (let i = 0; i < args.length; i += 2) {
@@ -370,11 +374,17 @@ export function buildDock(
     },
     pointerAway: () => (vertical ? [CROSS - 400, 0] : [0, CROSS - 400]),
   });
-  dock.addIcon = (name, id, windowCount) => {
-    const c = fakeContainer(name, id, windowCount, dock._end, scale, vertical);
+  // a new icon at `index` among the icons (the end by default); the ones after it move over
+  dock.addIcon = (name, id, windowCount, index = dock._icons.length) => {
+    const before = dock._icons[index];
+    const at = before ? before._at : dock._end;
+    dock._dashItems.forEach((item) => {
+      if (item._at >= at) item._at += step;
+    });
+    const c = fakeContainer(name, id, windowCount, at, scale, vertical);
     dock._end += step;
-    dock._icons.push(c);
-    dock._dashItems.push(c);
+    dock._icons.splice(index, 0, c);
+    dock._dashItems.splice(before ? dock._dashItems.indexOf(before) : dock._dashItems.length, 0, c);
     dock.renderArea.add_child(c);
     return c;
   };
@@ -399,12 +409,19 @@ export function removeItems(dock, index, count) {
   return gone;
 }
 
-// The hi-res timer's runAnimation(), as in timer.js, over a manual clock
+// The hi-res timer's runAnimation(), as in timer.js, over a manual clock. tick() runs a
+// snapshot of the subscribers, like the real timer: one cancelled during the tick still runs.
 export class FakeTimer {
   constructor() {
     this.subscribed = new Set();
   }
-  runAnimation(array) {
+  runAnimation(array, settings) {
+    // as in timer.js: an empty list is taken for a subscriber object of its own
+    if (!array.length) {
+      array._time = 0;
+      this.subscribed.add(array);
+      return array;
+    }
     let duration = 0;
     array.forEach((f) => {
       if (!f._start) f._start = duration;
@@ -413,6 +430,7 @@ export class FakeTimer {
     const obj = {
       _time: 0,
       _duration: duration,
+      _loop: false,
       _timer: this,
       _frames: [...array],
       onUpdate: (s, dt) => {
@@ -420,18 +438,21 @@ export class FakeTimer {
         s._currentFrames = s._frames.filter(
           (f) => f._start <= s._time && s._time < f._start + f._duration
         );
-        const run = () => s._currentFrames.forEach((f) => {
-          f._time = s._time - f._start;
-          f._func(f, s);
-        });
+        if (!s._func) {
+          s._func = () => s._currentFrames.forEach((f) => {
+            f._time = s._time - f._start;
+            f._func(f, s);
+          });
+        }
         if (s._time > s._duration) {
           this.subscribed.delete(s);
           s._time = s._duration;
-          run();
+          s._func(s);
           return;
         }
-        run();
+        s._func(s);
       },
+      ...(settings || {}),
     };
     this.subscribed.add(obj);
     return obj;
@@ -440,7 +461,7 @@ export class FakeTimer {
     this.subscribed.delete(obj);
   }
   tick(dt) {
-    [...this.subscribed].forEach((s) => s.onUpdate(s, dt));
+    [...this.subscribed].forEach((s) => s.onUpdate?.(s, dt));
   }
 }
 

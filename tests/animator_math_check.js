@@ -15,7 +15,7 @@ import {
   sizeStep,
   slotOffsets,
 } from '../animatorMath.js';
-import { bounceFrames, bounceTravel } from '../animatorBounce.js';
+import { BounceRun, bounceTravel } from '../animatorBounce.js';
 
 const { check, finish } = createChecker();
 const near = (a, b, msg) => check(Math.abs(a - b) < 1e-9, `${msg}: ${a} ~ ${b}`);
@@ -79,17 +79,17 @@ check(sizeStep(50, 50, 1, 16) === 0, 'at the goal there is no step');
   check(out.x === -12 - 12, 'a bigger icon rises left on a right dock');
 }
 
-// bounce timeline: `hops` x (rise, fall), then two closing frames
+// bounce timeline: `hops` x (rise, fall); the bounce ends when the timeline completes
 {
   const dock = { _iconSize: 48, extension: { animation_bounce_height: 0.5 } };
   near(bounceTravel(dock), 18, 'travel of a hop');
-  const frames = bounceFrames({}, 'app.desktop', 24, 3);
-  check(frames.length === 8, 'three hops are six frames plus two closing ones');
+  const frames = new BounceRun({}, 'app.desktop').frames(24, 3);
+  check(frames.length === 6, 'three hops are six frames');
   check(
-    frames.map((f) => f._duration).join() === '250,750,250,750,250,750,10,10',
+    frames.map((f) => f._duration).join() === '250,750,250,750,250,750',
     'bounce frame durations'
   );
-  check(bounceFrames({}, 'app.desktop', 24, 1).length === 4, 'one hop is four frames');
+  check(new BounceRun({}, 'app.desktop').frames(24, 1).length === 2, 'one hop is two frames');
 }
 
 finish();
