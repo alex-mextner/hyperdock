@@ -17,12 +17,12 @@ import GLib from 'gi://GLib';
 const PICTURE_SIZE = 256;
 
 export class StackPile {
-  constructor(extensionPath, onChanged) {
+  constructor(extensionPath, onChanged, pictureSize = PICTURE_SIZE) {
     this._argv = [
       GLib.find_program_in_path('gjs') ?? '/usr/bin/gjs',
       '-m',
       GLib.build_filenamev([extensionPath, 'apps', 'stack-pile.js']),
-      `${PICTURE_SIZE}`,
+      `${pictureSize}`,
     ];
     this._onChanged = onChanged;
     this._cancellable = new Gio.Cancellable();
@@ -33,15 +33,16 @@ export class StackPile {
 
   // layers: [{x, y, angle, scale, file, type, name, icon}], back to front. A
   // request while a picture is being drawn is drawn once more afterwards, so
-  // the last request always wins.
-  render(layers) {
+  // the last request always wins. `plate` (optional) puts the pile on a
+  // translucent rounded square, see apps/stack-pile.js.
+  render(layers, plate = null) {
     if (!this._cancellable) return;
     if (this._proc) {
-      this._pending = layers;
+      this._pending = { layers, plate };
       return;
     }
     this._pending = null;
-    let input = JSON.stringify({ layers });
+    let input = JSON.stringify({ layers, plate });
     try {
       this._proc = Gio.Subprocess.new(
         this._argv,
@@ -78,7 +79,7 @@ export class StackPile {
       this.gicon = Gio.BytesIcon.new(png);
       this._onChanged?.();
     }
-    if (this._pending) this.render(this._pending);
+    if (this._pending) this.render(this._pending.layers, this._pending.plate);
   }
 
   destroy() {

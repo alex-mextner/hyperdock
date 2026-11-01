@@ -15,6 +15,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as Compat from './compat.js';
 import { layoutScenario, widthScenario } from './layoutScenarios.js';
 import { stacksScenario } from './stackScenarios.js';
+import { appGridPileScenario } from './appGridPileScenarios.js';
 
 let started = false;
 let stopped = false;
@@ -133,6 +134,7 @@ const SCENARIOS = {
   layout: (ext) => layoutScenario(ext, helpers),
   width: (ext) => widthScenario(ext, helpers),
   stacks: (ext) => stacksScenario(ext, helpers),
+  appgrid: (ext) => appGridPileScenario(ext, helpers),
 };
 
 // Called by probe() after the first enable

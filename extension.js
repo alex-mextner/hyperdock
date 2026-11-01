@@ -34,6 +34,7 @@ import { Timer } from './timer.js';
 import { Style } from './style.js';
 import { Dock } from './dock.js';
 import { Services } from './services.js';
+import { AppGridPile } from './appGridPile.js';
 import { Integrations } from './integrations.js';
 import { WindowTracker } from './windowTracker.js';
 import { WindowFeedback } from './windowFeedback.js';
@@ -76,6 +77,7 @@ const ACTION_ORDER = [
   'file_drops',
   'recents_debounce',
   'recent_apps',
+  'app_grid_pile',
   'keyboard_focus',
   'hotkeys_overlay',
   'animation_fps',
@@ -123,11 +125,14 @@ const REACTIONS = Object.freeze({
   'running-indicator-style': ['animate'],
   'clock-style': ['widget_style'],
   'max-recent-items': ['recents_debounce'],
-  'apps-icon': ['layout', 'animate_refresh'],
+  'apps-icon': ['app_grid_pile', 'layout', 'animate_refresh'],
+  'app-grid-pile': ['app_grid_pile'],
+  'app-grid-pile-recent': ['app_grid_pile'],
+  'app-grid-pile-frequent': ['app_grid_pile'],
   'apps-icon-front': ['layout', 'animate_refresh'],
   'calendar-icon': ['pin_widget_apps', 'layout', 'animate_refresh'],
   'clock-icon': ['pin_widget_apps', 'layout', 'animate_refresh'],
-  'favorites-only': ['layout', 'animate_refresh'],
+  'favorites-only': ['app_grid_pile', 'layout', 'animate_refresh'],
   'keyboard-focus': ['keyboard_focus'],
   'hotkeys-overlay': ['hotkeys_overlay'],
   'recent-apps-count': ['recent_apps', 'layout', 'animate_refresh'],
@@ -206,7 +211,7 @@ const REACTIONS = Object.freeze({
   'documents-icon': ['layout', 'animate_refresh'],
   'trash-icon': ['trash_style', 'layout', 'animate_refresh'],
   'trash-style': ['trash_style', 'animate_refresh'],
-  'isolate-workspaces': ['windows_view', 'layout', 'animate_refresh'],
+  'isolate-workspaces': ['app_grid_pile', 'windows_view', 'layout', 'animate_refresh'],
   'minimized-window-tiles': ['windows_view', 'layout', 'animate_refresh'],
   'file-drops': ['file_drops'],
 });
@@ -389,6 +394,9 @@ export default class HyperdockExt extends Extension {
     this._lastServicesUpdate = 0;
     this._onCheckServices();
 
+    this.appGridPile = new AppGridPile(this);
+    this.appGridPile.setup();
+
     this.windowFeedback = new WindowFeedback(this);
     this.windowFeedback.enable();
 
@@ -465,6 +473,9 @@ export default class HyperdockExt extends Extension {
 
     this.integrations.disable();
     this.integrations = null;
+
+    this.appGridPile?.destroy();
+    this.appGridPile = null;
 
     this.services.disable();
     this.services = null;
@@ -800,6 +811,7 @@ export default class HyperdockExt extends Extension {
         this.services?._debounceCheckRecents();
       },
       recent_apps: () => this.services?.setupRecentsStack(),
+      app_grid_pile: () => this.appGridPile?.setup(),
       keyboard_focus: () => {
         this.docks?.forEach((dock) => dock._updateKeyboardFocus());
       },
@@ -886,6 +898,7 @@ export default class HyperdockExt extends Extension {
       'installed-changed',
       () => {
         this.services?.refreshWidgetApps();
+        this.appGridPile?.onInstalledChanged();
         this._onAppsChanged();
       },
       'app-state-changed',
@@ -1090,6 +1103,7 @@ export default class HyperdockExt extends Extension {
       this._lastServicesUpdate = 0;
     }
     this.icon_theme = St.IconTheme.new();
+    this.appGridPile?.setup();
     this._updateStyle();
     this.recreateAllDocks();
   }
@@ -1137,6 +1151,8 @@ export default class HyperdockExt extends Extension {
   _onAppsChanged() {
     // a closed, launched or (un)pinned app changes what Recents lists
     this.services?.refreshRecentsStack();
+    // pinned or running apps leave the pile's recent ones; usage moves its order
+    this.appGridPile?.scheduleRefresh();
     let listeners = [...this.listeners];
     listeners.forEach((l) => {
       if (l._onAppsChanged) l._onAppsChanged();

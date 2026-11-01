@@ -31,6 +31,7 @@ defaults are kept and nothing of upstream was removed.
 | Separators | Drift, about 7 px off the platter centre in a vertical dock | Centered on the platter at rest and while magnified |
 | Trash | Theme trash icon | Glass bin like macOS 26: fill level grows with the item count, newest 5 items shown as thumbnails or type cards |
 | Stacks | Downloads only; fan only, "Open Window" menu, box overlapping the dock | Recents (recent apps), Downloads, Screenshots and the Trash stand in one group behind one separator; every stack's icon is a pile of its newest real items; any folder is a stack (`folder-stacks`); Fan, Grid and List views, files batched under headers (Today, Yesterday, ... or by kind), Sort by, Display as Folder/Stack, picture previews, hidden files skipped, per-stack menu; the popover floats above the dock with a notch aimed at the icon; "Open" opens the folder itself. See [docs/STACKS.md](docs/STACKS.md) |
+| Apps icon | The nine dots | A heap of app icons tossed on a translucent rounded plate: your 6 most used apps and the 3 newest installed ones that are not in the dock (`app-grid-pile`, `app-grid-pile-recent`, `app-grid-pile-frequent`); it follows favorites, installs and usage, and a click opens the app grid as before. See [docs/APP_GRID_PILE.md](docs/APP_GRID_PILE.md) |
 | Badges | No badge by default, a 2 px dot | Red count badge, Unity LauncherEntry counts, progress bar and urgent state |
 | Minimize | Into the top-left corner, no genie, no tiles | Own GPU genie effect (Magic Lamp is broken on Mutter 50), minimize into the app icon or into a tile of the window left of the Trash; click the tile to restore |
 | Bounce | On dock click only, nothing for attention | Launch bounce from anywhere (Super+N, app grid, terminal), bounce for apps that need attention, which also reveals a hidden dock |
@@ -146,6 +147,8 @@ You may also use **icon names** from your favorite icon theme using the followin
 ```
 
 The icons `show-apps-icon`, `trash`, and `trash-full` must be available in your icon theme folder.
+
+The `view-app-grid-symbolic` entry replaces the nine dots only while the apps icon pile is off (`app-grid-pile`, on by default); with the pile on, the apps icon is the pile.
 
 Alternatively, you may override icons via app ID:
 

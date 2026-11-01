@@ -234,6 +234,32 @@
             </child>
           </object>
         </child>
+        <child>
+          <object class="AdwActionRow">
+            <property name="title" translatable="yes">Apps Icon as a Pile</property>
+            <property name="subtitle" translatable="yes">Show the Apps icon as a pile of app icons on a translucent plate instead of the nine dots.</property>
+            <property name="activatable-widget">app-grid-pile</property>
+            <child>
+              <object class="GtkSwitch" id="app-grid-pile">
+                <property name="valign">center</property>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="AdwSpinRow" id="app-grid-pile-recent">
+            <property name="title" translatable="yes">Pile: Recently Installed</property>
+            <property name="subtitle" translatable="yes">How many of the newest installed apps that are not in the dock the pile shows.</property>
+            <property name="adjustment">app-grid-pile-recent-adjust</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwSpinRow" id="app-grid-pile-frequent">
+            <property name="title" translatable="yes">Pile: Most Used</property>
+            <property name="subtitle" translatable="yes">How many of the most used apps the pile shows.</property>
+            <property name="adjustment">app-grid-pile-frequent-adjust</property>
+          </object>
+        </child>
       </object>
     </child>
     <child>
@@ -519,6 +545,20 @@
       <item translatable="yes">Maximize / Restore</item>
       <item translatable="yes">New Window</item>
     </items>
+  </object>
+  <object class="GtkAdjustment" id="app-grid-pile-recent-adjust">
+    <property name="lower">0</property>
+    <property name="upper">6</property>
+    <property name="step-increment">1</property>
+    <property name="page-increment">1</property>
+    <property name="value">3</property>
+  </object>
+  <object class="GtkAdjustment" id="app-grid-pile-frequent-adjust">
+    <property name="lower">0</property>
+    <property name="upper">12</property>
+    <property name="step-increment">1</property>
+    <property name="page-increment">3</property>
+    <property name="value">6</property>
   </object>
   <object class="GtkAdjustment" id="recent-apps-count-adjust">
     <property name="lower">0</property>
