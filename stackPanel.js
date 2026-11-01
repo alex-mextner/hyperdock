@@ -6,8 +6,9 @@
 // screen side, with a pointer at its dock edge aimed at the stack's icon, and
 // grows from / shrinks into that pointer. Its background is the dock's Liquid
 // Glass (one GLSL pass, the pointer part of the same SDF) or, with the glass
-// material off, the same shape as a flat translucent platter. Thumbnails come
-// from the freedesktop cache through St.TextureCache (async).
+// material off, the same shape as a flat translucent platter. Only the cells
+// near the scroll window exist (stackContent.js); thumbnails come from the
+// freedesktop cache or a worker process (stackThumbs.js), never decoded here.
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
@@ -15,15 +16,15 @@ import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
-import GdkPixbuf from 'gi://GdkPixbuf';
 import Pango from 'gi://Pango';
 import St from 'gi://St';
 
 import { GlassPlatter } from './effects/glass.js';
 import { trySpawnCommandLine } from './utils.js';
-import { smoothScaling } from './textureFilters.js';
+import { StackContent } from './stackContent.js';
+import { PANEL, cellName } from './stackLayout.js';
+import { fillThumbnail, stackIconFor } from './stackThumbs.js';
 import {
-  PANEL,
   STACK_DISPLAYS,
   STACK_DISPLAY_LABELS,
   STACK_GROUPS,
@@ -32,7 +33,6 @@ import {
   STACK_SORT_LABELS,
   STACK_VIEWS,
   STACK_VIEW_LABELS,
-  contentSize,
   groupItems,
   pick,
 } from './stackModel.js';
@@ -49,45 +49,6 @@ export {
   STACK_GROUP_LABELS,
   pick,
 };
-
-// largest images decoded directly when no thumbnail exists yet
-const MAX_PREVIEW_BYTES = 16 * 1024 * 1024;
-
-// The freedesktop thumbnail of an image file, or the image itself if small
-// enough; null for anything that is not an image.
-export function previewFile(item) {
-  if (!item.path || !item.type?.startsWith('image/')) {
-    return null;
-  }
-  let file = Gio.File.new_for_path(item.path);
-  let md5 = GLib.compute_checksum_for_string(
-    GLib.ChecksumType.MD5,
-    file.get_uri(),
-    -1
-  );
-  for (let size of ['large', 'normal']) {
-    let thumb = GLib.build_filenamev([
-      GLib.get_user_cache_dir(),
-      'thumbnails',
-      size,
-      `${md5}.png`,
-    ]);
-    if (GLib.file_test(thumb, GLib.FileTest.EXISTS)) {
-      return Gio.File.new_for_path(thumb);
-    }
-  }
-  let bytes = item.fileInfo?.get_size?.() ?? 0;
-  return bytes > 0 && bytes <= MAX_PREVIEW_BYTES ? file : null;
-}
-
-// The icon a stack shows when "Display as Stack": the top file's picture (or
-// its type icon), like the Dock showing the newest download.
-export function stackGicon(item) {
-  if (!item) return null;
-  let preview = previewFile(item);
-  if (preview) return new Gio.FileIcon({ file: preview });
-  return item.gicon ?? item.fileInfo?.get_icon?.() ?? null;
-}
 
 function openCommand(item, fileExplorer) {
   if (item.type?.includes('directory')) {
@@ -208,7 +169,7 @@ function bindPile(dock, item, stack) {
   let dashIcon = item.child;
   let applyDisplay = () => {
     let pile = stack.files?.length ? stack.pile?.gicon : null;
-    dashIcon?.setStackGicon?.(pile ?? stackGicon(stack.files?.[0]));
+    dashIcon?.setStackGicon?.(pile ?? stackIconFor(stack.files?.[0]));
     // The renderer copies the icon's gicon on its next frame, so starting
     // the animation is enough. A refresh would relayout synchronously, and
     // as this also runs while a relayout creates the item, that recursed.
@@ -228,8 +189,6 @@ export function setupStackItem(dock, item, stack) {
 
 const LIST_ROW_STYLE = 'border-radius: 8px; padding: 4px 8px;';
 const HOVER = 'background-color: rgba(255,255,255,0.16);';
-const HEADER_STYLE =
-  'font-weight: bold; font-size: 9pt; color: rgba(255,255,255,0.62); padding: 6px 8px 2px 8px;';
 
 // popover geometry, logical px
 const PANEL_RADIUS = 16;
@@ -327,6 +286,7 @@ export const StackPanel = GObject.registerClass(
           x_align: Clutter.ActorAlign.CENTER,
         })
       );
+      this._thumbs = this.dock.extension.services?.thumbnails ?? null;
       let groups = groupItems(files, stack.group ?? 'none', { sort: stack.sort });
       this._scroll = this._buildScroll(groups, view);
       this._panel.add_child(this._scroll);
@@ -334,46 +294,15 @@ export const StackPanel = GObject.registerClass(
     }
 
     _buildScroll(groups, view) {
-      let scroll = new St.ScrollView({
-        hscrollbar_policy: St.PolicyType.NEVER,
-        vscrollbar_policy: St.PolicyType.AUTOMATIC,
-        overlay_scrollbars: true,
+      let wa = Main.layoutManager.getWorkAreaForMonitor(this.dock._monitorIndex);
+      this._content = new StackContent({
+        groups,
+        view,
+        scale: this._scale,
+        workAreaWidth: wa.width,
+        makeCell: (f, rect, inView) => (view === 'list' ? this._listRow(f, inView) : this._gridCell(f, inView)),
       });
-      let content = new St.BoxLayout({ orientation: Clutter.Orientation.VERTICAL });
-      groups.forEach((group) => {
-        if (group.title) {
-          content.add_child(new St.Label({ text: group.title, style: HEADER_STYLE }));
-        }
-        content.add_child(view === 'list' ? this._listBatch(group) : this._gridBatch(group));
-      });
-      scroll.set_child(content);
-      let size = contentSize(groups, view);
-      scroll.set_size(size.width * this._scale, size.height * this._scale);
-      return scroll;
-    }
-
-    _gridBatch(group) {
-      let grid = new Clutter.GridLayout({
-        column_homogeneous: true,
-        row_homogeneous: true,
-      });
-      let batch = new St.Widget({ layout_manager: grid });
-      group.items.forEach((f, i) =>
-        grid.attach(
-          this._gridCell(f),
-          i % PANEL.GRID_COLUMNS,
-          Math.floor(i / PANEL.GRID_COLUMNS),
-          1,
-          1
-        )
-      );
-      return batch;
-    }
-
-    _listBatch(group) {
-      let rows = new St.BoxLayout({ orientation: Clutter.Orientation.VERTICAL });
-      group.items.forEach((f) => rows.add_child(this._listRow(f)));
-      return rows;
+      return this._content.actor;
     }
 
     _openButton(stack) {
@@ -513,55 +442,37 @@ export const StackPanel = GObject.registerClass(
       this._aim(cx, cy);
     }
 
-    _thumb(f, size) {
-      let scale = this._scale;
-      let preview = previewFile(f);
-      if (preview) {
-        let bin = new St.Bin({ width: size * scale, height: size * scale });
-        // bound only the longer side (bounding both stretches the picture);
-        // the texture cache decodes it downscaled off the main loop
-        let [, pw, ph] = GdkPixbuf.Pixbuf.get_file_info(preview.get_path());
-        let landscape = pw >= ph;
-        let picture = St.TextureCache.get_default().load_file_async(
-          preview,
-          landscape ? size : -1,
-          landscape ? -1 : size,
-          scale,
-          1
-        );
-        smoothScaling(picture);
-        picture.x_align = Clutter.ActorAlign.CENTER;
-        picture.y_align = Clutter.ActorAlign.CENTER;
-        bin.set_child(picture);
-        return bin;
-      }
-      let gicon = f.gicon ?? f.fileInfo?.get_icon?.();
-      return new St.Icon(
-        gicon
-          ? { gicon, icon_size: size }
-          : { icon_name: f.icon || 'text-x-generic', icon_size: size }
-      );
+    // a size x size picture or type icon of `f`, filled in as it arrives
+    _thumb(f, size, urgent) {
+      let bin = new St.Bin({ width: size * this._scale, height: size * this._scale });
+      fillThumbnail(bin, f, size, {
+        scale: this._scale,
+        service: this._thumbs,
+        urgent,
+      });
+      return bin;
     }
 
-    _gridCell(f) {
-      let base =
-        'border-radius: 10px; padding: 4px;' +
-        `width: ${PANEL.GRID_CELL - 8}px; height: ${PANEL.GRID_CELL + 4}px;`;
+    _gridCell(f, inView) {
+      let base = 'border-radius: 10px; padding: 4px;';
       let cell = new St.Button({ style: base, track_hover: true });
       let box = new St.BoxLayout({
         orientation: Clutter.Orientation.VERTICAL,
-        x_align: Clutter.ActorAlign.CENTER,
+        x_expand: true,
       });
-      let thumb = this._thumb(f, PANEL.GRID_THUMB);
+      let thumb = this._thumb(f, PANEL.GRID_THUMB, inView);
+      cell._promote = () => thumb._promote?.();
       thumb.x_align = Clutter.ActorAlign.CENTER;
       box.add_child(thumb);
+      // two short lines (stackLayout.cellName): a long name keeps its start
+      // and its end; a line still too wide is cut at its end
       let label = new St.Label({
-        text: f.name,
+        text: cellName(f.name),
         style: 'color: white; font-size: 9pt; text-align: center;',
         x_align: Clutter.ActorAlign.CENTER,
+        x_expand: true,
       });
-      // Finder keeps both ends of long names ("Screenshot…10-04.png")
-      label.clutter_text.ellipsize = Pango.EllipsizeMode.MIDDLE;
+      label.clutter_text.ellipsize = Pango.EllipsizeMode.END;
       box.add_child(label);
       cell.set_child(box);
       cell.connect('clicked', () => this._open(f));
@@ -571,14 +482,16 @@ export const StackPanel = GObject.registerClass(
       return cell;
     }
 
-    _listRow(f) {
+    _listRow(f, inView) {
       let row = new St.Button({
         style: LIST_ROW_STYLE,
         track_hover: true,
         x_expand: true,
       });
       let box = new St.BoxLayout({ x_expand: true });
-      box.add_child(this._thumb(f, PANEL.LIST_THUMB));
+      let thumb = this._thumb(f, PANEL.LIST_THUMB, inView);
+      row._promote = () => thumb._promote?.();
+      box.add_child(thumb);
       let label = new St.Label({
         text: f.name,
         style: 'color: white; padding-left: 10px;',

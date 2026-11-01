@@ -17,26 +17,16 @@ import { GlassTrash } from './apps/trash.js';
 import { LauncherEntries } from './launcherEntry.js';
 import Shell from 'gi://Shell';
 import { STACK_VIEWS, STACK_DISPLAYS, pileLayers } from './stackModel.js';
+import { listFolder } from './stackFolder.js';
+import { ThumbnailService } from './stackThumbs.js';
 import { folderStackSpecs, recentItems } from './stackSources.js';
 import { StackPile } from './stackPile.js';
 
 // sync with animator
 const CANVAS_SIZE = 120;
 const DEBOUNCE_CHECK_TIMEOUT = 750;
-
-// Grid/List panels list at most this many files of a folder stack
-const STACK_MAX_FILES = 200;
-
-const byName = (a, b) =>
-  a.name.localeCompare(b.name, undefined, { numeric: true });
-// macOS stack sort orders; dates newest first, ties by name
-const STACK_COMPARE = {
-  name: byName,
-  'date-modified': (a, b) => b.date.tv_sec - a.date.tv_sec || byName(a, b),
-  'date-added': (a, b) => b.created - a.created || byName(a, b),
-  'date-created': (a, b) => b.created - a.created || byName(a, b),
-  kind: (a, b) => (a.type ?? '').localeCompare(b.type ?? '') || byName(a, b),
-};
+// pictures made ahead for the first files of a stack (a dropdown's first pages)
+const WARM_THUMBNAILS = 40;
 
 // Directory monitor or null: Gio.File.monitor() throws ("Unable to find
 // default local file monitor type") once inotify instances run out, and that
@@ -79,6 +69,7 @@ class ServiceCounter {
 export const Services = class {
   enable() {
     this._cancellable = new Gio.Cancellable();
+    this.thumbnails = new ThumbnailService(this.extension.path);
     this._mounts = {};
     this.trashApp = null;
     this.mountApps = {};
@@ -167,6 +158,8 @@ export const Services = class {
     this._cancellable?.cancel();
     this._cancellable = null;
     this._teardownFolderStacks();
+    this.thumbnails?.destroy();
+    this.thumbnails = null;
     this._services = [];
     this._volumeMonitor?.disconnectObject(this);
     this._volumeMonitor = null;
@@ -419,6 +412,9 @@ export const Services = class {
       stack.monitor = null;
       this.extension._loTimer?.cancel(stack.checkSeq);
       stack.checkSeq = null;
+      stack.listing?.cancel();
+      stack.listing = null;
+      stack.relisting = null;
       stack.pile?.destroy();
     });
     this.folderStacks = [];
@@ -750,103 +746,12 @@ export const Services = class {
     return maxs[this.extension.max_recent_items || 0];
   }
 
-  // Files of a stack folder in the stack's sort order: up to STACK_MAX_FILES
-  // for the Grid/List panels (the fan takes the first maxFanItems()) and the
-  // total count.
-  async checkRecentFilesInFolder(path, sort = 'date-modified') {
-    console.log(`checking ${path}`);
-    let max_recent_items = STACK_MAX_FILES;
-    let downloadFiles = [];
-    let downloadFilesLength = 0;
-
-    let directory = Gio.File.new_for_path(path);
-    let enumerator = null;
-    try {
-      enumerator = directory.enumerate_children(
-        [
-          Gio.FILE_ATTRIBUTE_STANDARD_CONTENT_TYPE,
-          Gio.FILE_ATTRIBUTE_STANDARD_NAME,
-          Gio.FILE_ATTRIBUTE_STANDARD_ICON,
-          Gio.FILE_ATTRIBUTE_TIME_MODIFIED,
-          Gio.FILE_ATTRIBUTE_TIME_CREATED,
-          Gio.FILE_ATTRIBUTE_STANDARD_SIZE,
-          Gio.FILE_ATTRIBUTE_STANDARD_IS_HIDDEN,
-        ].join(','),
-        Gio.FileQueryInfoFlags.NONE,
-        this._cancellable ?? null
-      );
-
-      let fileInfo;
-      while (
-        (fileInfo = enumerator.next_file(this._cancellable ?? null)) !== null
-      ) {
-        // hidden files stay out of the stack, as in Finder
-        if (fileInfo.get_is_hidden()) {
-          continue;
-        }
-        downloadFiles.push(this._stackFileEntry(path, fileInfo));
-      }
-
-      downloadFilesLength = downloadFiles.length;
-      downloadFiles.sort(STACK_COMPARE[sort] ?? STACK_COMPARE['date-modified']);
-
-      let index = 0;
-      downloadFiles.forEach((f) => {
-        f.index = index++;
-      });
-
-      downloadFiles.splice(max_recent_items);
-      return [downloadFiles, downloadFilesLength];
-    } catch (e) {
-      if (!this._isCancelError(e)) {
-        console.error('d2da: services checkRecentFilesInFolder', e);
-      }
-      return [[], 0];
-    } finally {
-      try {
-        enumerator?.close(null);
-      } catch {
-        // ignore close error
-      }
-    }
-  }
-
   // true when the error is our own cancellation, which is not worth logging
   _isCancelError(e) {
     return !!(
       this._cancellable?.is_cancelled() ||
       (e?.matches && e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED))
     );
-  }
-
-  // one stack file item built from its Gio.FileInfo
-  _stackFileEntry(path, fileInfo) {
-    let fileName = fileInfo.get_name();
-    let fileModified = fileInfo.get_modification_time();
-
-    let icon = 'file';
-    if (fileInfo.get_icon() && fileInfo.get_icon().names) {
-      icon =
-        this.extension.lookup_icon_from_names(fileInfo.get_icon().names) ??
-        icon;
-    }
-
-    return {
-      index: 0,
-      name: fileName,
-      display: fileName,
-      icon: icon,
-      type: fileInfo.get_content_type(),
-      path: GLib.build_filenamev([path, fileName]),
-      date: fileModified ?? { tv_sec: 0 },
-      // btime; GLib has no "date added", and moving a file in keeps its
-      // btime on the same filesystem, so creation stands in for it.
-      // Filesystems without btime fall back to the modification time.
-      created: fileInfo.has_attribute(Gio.FILE_ATTRIBUTE_TIME_CREATED)
-        ? fileInfo.get_attribute_uint64(Gio.FILE_ATTRIBUTE_TIME_CREATED)
-        : (fileModified?.tv_sec ?? 0),
-      fileInfo: fileInfo,
-    };
   }
 
   /*
@@ -1009,28 +914,51 @@ export const Services = class {
     }
   }
 
+  // Lists the stack's folder again (asynchronously, in chunks: the main loop
+  // keeps drawing). A newer listing replaces one still running, so a burst of
+  // changes ends in the last state whatever order the listings finish in; a
+  // caller of the replaced listing (a click waiting for the files) waits for the
+  // one that took over.
   async checkFolderStack(stack) {
     if (stack.isRecents) {
       this.refreshRecentsStack();
       return;
     }
+    stack.listing?.cancel();
+    let listing = new Gio.Cancellable();
+    stack.listing = listing;
+    let run = this._relist(stack, listing);
+    stack.relisting = run;
+    await run;
+    while (stack.relisting && stack.relisting !== run) {
+      run = stack.relisting;
+      await run;
+    }
+  }
+
+  async _relist(stack, listing) {
     try {
-      [stack.files, stack.total] = await this.checkRecentFilesInFolder(
-        stack.path,
-        stack.sort
-      );
+      let { files, total } = await listFolder(stack.path, {
+        sort: stack.sort,
+        cancellable: listing,
+        iconOf: (names) => this.extension.lookup_icon_from_names(names),
+      });
+      if (listing.is_cancelled()) return;
+      stack.files = files;
+      stack.total = total;
+      // the first page gets its pictures now, so that the dropdown opens
+      // with them instead of waiting for the thumbnailer on the first click
+      this.thumbnails?.request(files.slice(0, WARM_THUMBNAILS), null, false);
       this._renderPile(stack);
-      stack.fileListeners?.forEach((listener) => listener());
     } catch (err) {
-      if (
-        this._cancellable?.is_cancelled() ||
-        (err?.matches &&
-          err.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED))
-      ) {
-        return;
-      }
+      if (listing.is_cancelled() || this._isCancelError(err)) return;
+      // the folder is gone (deleted, unmounted): the stack is empty now
+      stack.files = [];
+      stack.total = 0;
       console.error('d2da: services checkFolderStack', err);
     }
+    if (stack.listing === listing) stack.listing = null;
+    stack.fileListeners?.forEach((listener) => listener());
   }
 
   _debounceCheckFolderStack(stack) {

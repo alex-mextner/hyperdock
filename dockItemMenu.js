@@ -11,14 +11,14 @@ import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import Clutter from 'gi://Clutter';
 import St from 'gi://St';
-import GdkPixbuf from 'gi://GdkPixbuf';
 import Graphene from 'gi://Graphene';
 const Point = Graphene.Point;
 
 import { DockPosition } from './dock.js';
 import { Vector } from './vector.js';
-import { StackPanel, previewFile } from './stackPanel.js';
-import { smoothScaling } from './textureFilters.js';
+import { StackPanel } from './stackPanel.js';
+import { fillThumbnail } from './stackThumbs.js';
+import { Latest } from './stackModel.js';
 import { snapToPixel } from './iconGeometry.js';
 
 const ANIM_POSITION_PER_SEC = 450 / 1000;
@@ -84,6 +84,18 @@ function showFanList(dock, target, files) {
   }
 }
 
+// Waits for the stack's files and says whether the click that waited is still
+// the one to act on: another dropdown opened meanwhile (every click takes a
+// ticket, cached or not), or the dock was rebuilt and this item with it, and a
+// late one would replace the dropdown the user is looking at.
+async function prepareStillWanted(dock, target, f, ticket) {
+  let gone = false;
+  let destroyId = target.connect('destroy', () => (gone = true));
+  await f.prepare();
+  if (!gone) target.disconnect(destroyId);
+  return !gone && dock._stackClicks.isCurrent(ticket);
+}
+
 export const DockItemList = GObject.registerClass(
   {},
   class DockItemList extends St.Widget {
@@ -110,16 +122,18 @@ export const DockItemList = GObject.registerClass(
     static createItem(dock, f) {
       let file_explorer = dock.extension.file_explorer();
       let target = dock.createItem(f.path, f.icon);
-      target._onClick = () => {
+      target._onClick = async () => {
         let now = Date.now();
         if (target._lastExecTime && now - target._lastExecTime < 1000) {
           return;
         }
         target._lastExecTime = now;
+        dock._stackClicks ??= new Latest();
+        let ticket = dock._stackClicks.start();
         // Recents is rebuilt from the app system, which may have been empty
         // when its stack was made
         if (!f.files() || f.stack?.isRecents) {
-          f.prepare();
+          if (!(await prepareStillWanted(dock, target, f, ticket))) return;
         }
         let files = f.files() || [];
         if (!files.length) return;
@@ -209,31 +223,16 @@ export const DockItemList = GObject.registerClass(
         w._icon = icon;
         w._label = label;
         w.createActualIcon = () => {
-          // images show their picture, like the Finder stack fan, decoded
-          // scaled down by the texture cache. Bound only the longer side
-          // (bounding both stretches it) and center it in the icon square.
-          let preview = previewFile(l);
-          let _icon;
-          if (preview) {
-            let [, pw, ph] = GdkPixbuf.Pixbuf.get_file_info(preview.get_path());
-            let landscape = pw >= ph;
-            _icon = St.TextureCache.get_default().load_file_async(
-              preview,
-              landscape ? icon_size : -1,
-              landscape ? -1 : icon_size,
-              1,
-              dock._monitor.geometry_scale
-            );
-            smoothScaling(_icon);
-            w._icon.layout_manager = new Clutter.BinLayout();
-          } else {
-            _icon = new St.Icon({
-              name: 'icon',
-              icon_size: icon_size,
-              ...(l.gicon ? { gicon: l.gicon } : { icon_name: l.icon }),
-            });
-          }
-          w._icon.add_child(_icon);
+          // images show their picture, like the Finder stack fan: the
+          // type icon at once, the cached or freshly made thumbnail when it
+          // is there (stackThumbs.js; nothing is decoded on this loop)
+          let bin = new St.Bin({ name: 'icon', width: icon_size, height: icon_size });
+          fillThumbnail(bin, l, icon_size, {
+            scale: 1,
+            resourceScale: dock._monitor.geometry_scale,
+            service: dock.extension.services?.thumbnails ?? null,
+          });
+          w._icon.add_child(bin);
         };
         label.opacity = 0;
 

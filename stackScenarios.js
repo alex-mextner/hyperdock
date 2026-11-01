@@ -54,7 +54,7 @@ export function pointerFor(dock, h) {
     await click();
   };
   const park = () => moveTo(global.stage.width / 2, global.stage.height / 3);
-  return { centreOf, moveTo, click, clickOn, park };
+  return { pointer, centreOf, moveTo, click, clickOn, park };
 }
 
 // what the stub launchers wrote

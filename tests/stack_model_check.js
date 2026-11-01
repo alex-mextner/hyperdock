@@ -3,6 +3,7 @@
 // the Recents / Downloads / Screenshots / Trash group. Exits 1 on failure.
 import { createChecker } from './harness.js';
 import {
+  Latest,
   clusterOrder,
   dateBucket,
   groupItems,
@@ -10,9 +11,7 @@ import {
   kindBucket,
   pileItems,
   pileLayout,
-  PANEL,
   pileLayers,
-  contentSize,
 } from '../stackModel.js';
 
 const { check, finish } = createChecker();
@@ -152,24 +151,12 @@ check(same(clusterOrder(order).slice(4, 6), [1, 7]), 'stacks keep the order the 
 check(same(clusterOrder(['stack', 'mystery']), [0, 1]), 'an unknown role counts as a stack');
 check(same(clusterOrder([]), []), 'nothing to order');
 
-// ---- dropdown size ----------------------------------------------------------
-const g = (title, n) => ({ title, items: new Array(n).fill({}) });
-const grid = (groups) => contentSize(groups, 'grid');
-check(grid([g(null, 3)]).width === 3 * PANEL.GRID_CELL, 'a small ungrouped grid is as wide as its files');
-check(grid([g(null, 40)]).width === PANEL.GRID_COLUMNS * PANEL.GRID_CELL, 'a big grid is five columns wide');
-check(grid([g(null, 5)]).height === PANEL.GRID_CELL + PANEL.GRID_ROW_GAP, 'five files are one row');
-check(grid([g(null, 6)]).height === 2 * (PANEL.GRID_CELL + PANEL.GRID_ROW_GAP), 'six files are two rows');
-check(
-  grid([g('Today', 1), g('Yesterday', 1)]).height === 2 * (PANEL.GRID_CELL + PANEL.GRID_ROW_GAP) + 2 * PANEL.HEADER,
-  'every batch adds its header and starts a new row'
-);
-check(
-  grid([g(null, 500)]).height === PANEL.MAX_GRID_ROWS * (PANEL.GRID_CELL + PANEL.GRID_ROW_GAP) + PANEL.HEADER,
-  'a long grid is capped and scrolls'
-);
-check(contentSize([g(null, 4)], 'list').height === 4 * PANEL.LIST_ROW, 'a list is one row per file');
-check(contentSize([g('Today', 4)], 'list').height === 4 * PANEL.LIST_ROW + PANEL.HEADER, 'a list batch adds its header');
-check(contentSize([g(null, 400)], 'list').height === PANEL.MAX_LIST_ROWS * PANEL.LIST_ROW + PANEL.HEADER, 'a long list is capped and scrolls');
-check(contentSize([], 'grid').height === 0 && contentSize([], 'list').height === 0, 'an empty stack has no area');
+// ---- clicks that wait --------------------------------------------------------
+const latest = new Latest();
+const first = latest.start();
+check(latest.isCurrent(first), 'a click is current while nothing newer started');
+const second = latest.start();
+check(!latest.isCurrent(first) && latest.isCurrent(second), 'a newer click makes the older one stale');
+check(!latest.isCurrent(0), 'no ticket is current before anything started');
 
 finish();

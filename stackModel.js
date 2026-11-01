@@ -207,40 +207,49 @@ export function clusterOrder(roles) {
     .map((entry) => entry.index);
 }
 
-// ---- the dropdown's size --------------------------------------------------
+// ---- the order of a stack's files --------------------------------------------
 
-// logical px
-export const PANEL = {
-  GRID_COLUMNS: 5,
-  GRID_CELL: 96,
-  GRID_THUMB: 64,
-  GRID_ROW_GAP: 12,
-  LIST_THUMB: 24,
-  LIST_ROW: 36,
-  LIST_WIDTH: 300,
-  HEADER: 26,
-  // a panel shows at most this many rows (plus one batch header) and scrolls
-  // the rest
-  MAX_GRID_ROWS: 4,
-  MAX_LIST_ROWS: 12,
+// The Grid and List list at most this many files of a folder stack, in the
+// stack's order (the fan takes the first few). The dropdown builds only the
+// cells that are on screen, so this is a bound on memory, not on opening time.
+export const STACK_MAX_FILES = 1000;
+
+const collator = new Intl.Collator(undefined, { numeric: true });
+const byName = (a, b) => collator.compare(a.name, b.name);
+
+// macOS stack sort orders; dates newest first, ties by name
+export const STACK_COMPARE = {
+  name: byName,
+  'date-modified': (a, b) => b.date.tv_sec - a.date.tv_sec || byName(a, b),
+  'date-added': (a, b) => b.created - a.created || byName(a, b),
+  'date-created': (a, b) => b.created - a.created || byName(a, b),
+  kind: (a, b) => (a.type ?? '').localeCompare(b.type ?? '') || byName(a, b),
 };
 
-// Visible size of the file area for batches `groups` in `view` ('grid' or
-// 'list'): every batch adds its header, a grid batch fills rows of
-// GRID_COLUMNS, and the height is capped so a long stack scrolls.
-export function contentSize(groups, view) {
-  const items = groups.reduce((n, g) => n + g.items.length, 0);
-  const headers = groups.filter((g) => g.title).length * PANEL.HEADER;
-  if (view === 'list') {
-    const full = items * PANEL.LIST_ROW + headers;
-    const cap = PANEL.MAX_LIST_ROWS * PANEL.LIST_ROW + PANEL.HEADER;
-    return { width: PANEL.LIST_WIDTH, height: Math.min(full, cap) };
+// `items` sorted in place in the order `sort` names (an unknown name sorts by
+// modification date, the upstream default), numbered from 0 in that order
+export function sortStackItems(items, sort) {
+  items.sort(STACK_COMPARE[sort] ?? STACK_COMPARE['date-modified']);
+  items.forEach((item, index) => (item.index = index));
+  return items;
+}
+
+// ---- clicks that wait ----------------------------------------------------------
+
+// Hands out tickets so that of several things started one after the other only
+// the last one finishes its work: a click on a stack whose files are still
+// being listed waits, and must give up when another dropdown was opened (or
+// the dock was rebuilt) meanwhile.
+export class Latest {
+  constructor() {
+    this._last = 0;
   }
-  const rowHeight = PANEL.GRID_CELL + PANEL.GRID_ROW_GAP;
-  const rows = groups.reduce((n, g) => n + Math.ceil(g.items.length / PANEL.GRID_COLUMNS), 0);
-  const cap = PANEL.MAX_GRID_ROWS * rowHeight + PANEL.HEADER;
-  return {
-    width: Math.min(items, PANEL.GRID_COLUMNS) * PANEL.GRID_CELL,
-    height: Math.min(rows * rowHeight + headers, cap),
-  };
+
+  start() {
+    return ++this._last;
+  }
+
+  isCurrent(ticket) {
+    return ticket === this._last;
+  }
 }
