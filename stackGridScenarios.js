@@ -35,3 +35,22 @@ export function gridGeometry(panel) {
     headers: headers.map((l) => ({ text: l.text, ...rectOf(l, origin) })),
   };
 }
+
+// What is wrong with the grid as laid out (empty when nothing): a cell off the
+// column grid or overlapping another, a header that does not span the width.
+export function gridProblems(geometry) {
+  const problems = [];
+  const cell = Math.min(...geometry.cells.map((c) => c.w).filter((w) => w > 0), Infinity);
+  const seen = new Set();
+  geometry.cells.forEach((c, i) => {
+    if (c.x % cell !== 0) problems.push(`cell ${i} is off the columns: x=${c.x}`);
+    const key = `${c.x},${c.y}`;
+    if (seen.has(key)) problems.push(`cell ${i} overlaps another at ${key}`);
+    seen.add(key);
+  });
+  const widest = Math.max(0, ...geometry.cells.map((c) => c.x + c.w));
+  geometry.headers.forEach((hd) => {
+    if (hd.x !== 0 || hd.w < widest) problems.push(`header "${hd.text}" does not span the width`);
+  });
+  return problems;
+}

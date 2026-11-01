@@ -15,10 +15,13 @@ import Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
 import St from 'gi://St';
 import { pointerFor } from './stackScenarios.js';
-import { gridGeometry } from './stackGridScenarios.js';
+import { gridGeometry, gridProblems } from './stackGridScenarios.js';
 import { thumbnailable } from './thumbQueue.js';
 
 const S = 'stackopen';
+// generous: the nested shell draws in software and shares the machine
+const FIRST_FRAME_MS = 1500;
+const MAX_STALL_MS = 1000;
 const now = () => GLib.get_monotonic_time() / 1000;
 
 // the longest main-loop stall since start()
@@ -178,11 +181,17 @@ async function measureStack(d, dock, ext, h, wd, stack, label) {
     h.say({ scenario: S, label, run, ...numbers });
     h.check(S, `${label} ${run}: the visible pictures all load`, numbers.readyMs !== null, numbers);
     h.check(S, `${label} ${run}: no fixture picture failed thumbnailing`, numbers.failed === 0, numbers);
+    // the old code froze the shell for 2-8 s here; the ceilings leave room for a loaded machine
+    h.check(S, `${label} ${run}: first frame within ${FIRST_FRAME_MS} ms`, numbers.firstPaintMs < FIRST_FRAME_MS, numbers);
+    h.check(S, `${label} ${run}: the main loop never stalls ${MAX_STALL_MS} ms`, numbers.blockMs < MAX_STALL_MS, numbers);
     if (run === 'cold') {
       await h.sleep(600);
       await h.shot(`stackopen-${label}`);
       h.say({ scenario: S, label, geometry: gridGeometry(panel) });
+      const problems = gridProblems(gridGeometry(panel));
+      h.check(S, `${label}: cells stand on one column grid, none overlaps`, problems.length === 0, problems);
       const scrolled = await scrollToEnd(h, wd, panel);
+      h.check(S, `${label}: the end of the list loads`, scrolled.scrollReadyMs !== null, scrolled);
       h.say({ scenario: S, label, run: 'scroll', ...scrolled });
       await h.shot(`stackopen-${label}-end`);
     }

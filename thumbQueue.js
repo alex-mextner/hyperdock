@@ -29,6 +29,7 @@ export class ThumbQueue {
     this._waiting = [];
     this._making = new Set();
     this._wanted = new Map(); // path -> {items: Set, listeners: Set, kept: boolean}
+    this._retried = new WeakSet(); // items asked for a second time
   }
 
   get size() {
@@ -105,12 +106,17 @@ export class ThumbQueue {
     const stale = new Set();
     want.items.forEach((item) => {
       const seen = item.date?.tv_sec;
-      if (mtime !== null && seen !== undefined && seen > mtime) {
-        // listed after the version that was made: ask again
+      if (mtime !== null && seen !== undefined && seen > mtime && !this._retried.has(item)) {
+        // listed after the version that was made: ask again, once (a file
+        // whose time went back would never match)
+        this._retried.add(item);
         stale.add(item);
       } else if (mtime !== null && seen !== undefined && seen < mtime) {
         // an older listing than the file the worker read: superseded, its
         // successor (a newer item for this path) has been asked for
+      } else if (seen !== undefined && mtime !== null && seen > mtime) {
+        // already asked again and still newer: the file's time went back; give up
+        item.thumbFailed = true;
       } else if (thumb) {
         item.thumb = thumb;
       } else {

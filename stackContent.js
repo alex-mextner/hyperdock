@@ -47,7 +47,10 @@ export class StackContent {
 
     this._addHeaders();
     this._adjustment = this.actor.vadjustment;
-    this._valueId = this._adjustment.connect('notify::value', () => this._schedule());
+    // never disconnected: the scroll view owns the adjustment and disposes it
+    // (with its handlers) before its 'destroy' signal is emitted, so a
+    // disconnect there only reaches a disposed object
+    this._adjustment.connect('notify::value', () => this._schedule());
     this.actor.connect('destroy', () => this.destroy());
     // only what is in view before the first frame; the page around it follows
     this._sync(0);
@@ -142,12 +145,6 @@ export class StackContent {
   destroy() {
     if (this._idle) GLib.source_remove(this._idle);
     this._idle = 0;
-    try {
-      if (this._valueId) this._adjustment.disconnect(this._valueId);
-    } catch {
-      // the adjustment went with the scroll view
-    }
-    this._valueId = 0;
     this._realized.clear();
   }
 }

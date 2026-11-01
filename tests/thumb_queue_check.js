@@ -99,6 +99,16 @@ r2.request([olderItem], null, false);
 r2.take();
 r2.finish('/h.png', '/cache/h2.png', 2);
 check(r2.size === 0 && !r2.has('/h.png') && olderItem.thumb === undefined, 'an item older than the file that was read is dropped, not asked for again');
+// a file whose time went back: asked again once, then given up, never a loop
+const rb = new ThumbQueue(10);
+const rolled = { path: '/i.png', date: { tv_sec: 200 } };
+rb.request([rolled], null, false);
+rb.take();
+rb.finish('/i.png', '/cache/i.png', 100);
+check(rb.size === 1 && rolled.thumb === undefined, 'a listing newer than the file read is asked for once more');
+rb.take();
+rb.finish('/i.png', '/cache/i.png', 100);
+check(rb.size === 0 && !rb.has('/i.png') && rolled.thumbFailed === true, 'and then given up when the file still looks older (its time went back)');
 const unknown = { path: '/g.png' };
 const u2 = new ThumbQueue(10);
 u2.request([unknown], null, true);
