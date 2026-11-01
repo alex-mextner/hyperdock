@@ -35,10 +35,10 @@ jobs:
 
       - name: Install system tools
         # gjs runs tests/*_check.js, libglib2.0-bin compiles/validates the schema,
-        # libxml2-utils lints the .ui files.
+        # libxml2-utils lints the .ui files, gir1.2-gtk-4.0 gives the stack-pile check its Gdk 4 typelib.
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq gjs libglib2.0-bin libxml2-utils make zip
+          sudo apt-get install -y -qq gir1.2-gtk-4.0 gjs libglib2.0-bin libxml2-utils make zip
 
       - name: Install JS dependencies
         run: npm ci --no-audit --no-fund
