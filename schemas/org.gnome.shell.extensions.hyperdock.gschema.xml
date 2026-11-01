@@ -1,0 +1,684 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist gettext-domain="hyperdock">
+  <schema path="/org/gnome/shell/extensions/hyperdock/" id="org.gnome.shell.extensions.hyperdock">
+    <key type="b" name="debug">
+        <default>false</default>
+        <summary>Debug Mode</summary>
+        <description></description>
+    </key>
+    <key type="b" name="experimental-features">
+        <default>false</default>
+        <summary>Debug Mode</summary>
+        <description></description>
+    </key>
+    <key type="b" name="debug-log">
+        <default>false</default>
+        <summary>Logs</summary>
+        <description>Enable debug logs</description>
+    </key>
+    <key type="b" name="debug-visual">
+        <default>false</default>
+        <summary>Visual Indicators</summary>
+        <description>Enable debug visual indicators when animations are running.</description>
+    </key>
+    <key type="b" name="shrink-icons">
+        <default>true</default>
+        <summary>Shrink icons</summary>
+        <description>Shrink dash icons.</description>
+    </key>
+    <key type="b" name="animate-icons">
+        <default>true</default>
+        <summary>Animations and Effects</summary>
+        <description>Enable animations and effects.</description>
+    </key>
+    <key type="b" name="animate-icons-unmute">
+        <default>true</default>
+        <summary>Animate Icons</summary>
+        <description>Animate dash icons on hover.</description>
+    </key>
+    <key type="b" name="open-app-animation">
+        <default>false</default>
+        <summary>Open app animation</summary>
+        <description>Open app animation.</description>
+    </key>
+    <key type="b" name="launch-bounce-anywhere">
+        <default>false</default>
+        <summary>Bounce on launch from anywhere</summary>
+        <description>With the opening animation on, a pinned app's icon also bounces when the app is launched outside the dock (Super+number, app grid, a terminal).</description>
+    </key>
+    <key type="b" name="urgent-bounce">
+        <default>false</default>
+        <summary>Bounce apps that need attention</summary>
+        <description>While an unfocused app asks for attention (a window demands attention or is urgent), its icon keeps bouncing and an autohidden dock stays shown, as on macOS.</description>
+    </key>
+    <key type="b" name="minimize-to-icon">
+        <default>false</default>
+        <summary>Minimize into the app icon</summary>
+        <description>Windows minimize into (and restore out of) their app's dock icon. Off: Shell animates them into the monitor's top-left corner.</description>
+    </key>
+    <key type="i" name="minimize-effect">
+        <default>0</default>
+        <summary>Minimize effect</summary>
+        <description>How windows minimize and restore: 0 = Shell's scale animation, 1 = genie into the app's dock icon (GPU). The genie stands aside while the Magic Lamp extension is active.</description>
+    </key>
+    <key type="b" name="autohide-dash">
+        <default>false</default>
+        <summary>Autohide dash panel</summary>
+        <description>Animate dash icons on hover.</description>
+    </key>
+    <key type="b" name="autohide-dodge">
+        <default>true</default>
+        <summary>Autohide dodge mode</summary>
+        <description>Autohide dash only when overlapping with windows.</description>
+    </key>
+    <key type="b" name="pressure-sense">
+        <default>false</default>
+        <summary>Pressure sense</summary>
+        <description>Move pointer down to force dash visibility.</description>
+    </key>
+    <key type="i" name="reveal-delay-ms">
+        <range min="0" max="2000"/>
+        <default>300</default>
+        <summary>Autohide reveal delay (ms)</summary>
+        <description>An autohidden dock slides in only after the pointer has rested ON the screen edge this many milliseconds; passing near the edge or leaving early does nothing. With pressure sense on, the push must also be reached. 0 reveals at once. Other reveal paths (window attention, file drags, the toggle shortcut) stay immediate.</description>
+    </key>
+    <key type="d" name="autohide-speed">
+        <default>0.5</default>
+        <summary>Autohide speed</summary>
+        <description>Set autohide animation speed.</description>
+    </key>
+    <key type="(dddd)" name="background-color">
+        <default>(0.,0.,0.,0.25)</default>
+        <summary>Background color</summary>
+        <description>Set dock background color.</description>
+    </key>
+    <key type="b" name="customize-topbar">
+        <default>false</default>
+        <summary>Customize the topbar</summary>
+        <description>Customize the topbar with border and color.</description>
+    </key>
+    <key type="(dddd)" name="topbar-background-color">
+        <default>(0.,0.,0.,0.25)</default>
+        <summary>Topbar background color</summary>
+        <description>Set topbar panel background color.</description>
+    </key>
+    <key type="(dddd)" name="topbar-foreground-color">
+        <default>(1.,1.,1.,1.)</default>
+        <summary>Topbar foreground color</summary>
+        <description>Set topbar panel foreground color.</description>
+    </key>
+        <key type="(dddd)" name="topbar-border-color">
+        <default>(1.,1.,1.,1.)</default>
+        <summary>border color</summary>
+        <description>Set topbar border color.</description>
+    </key>
+    <key type="i" name="topbar-border-thickness">
+        <default>0</default>
+        <summary>Border thickness</summary>
+        <description>Border thickness.</description>
+		</key>
+		<key type="b" name="topbar-blur-background">
+        <default>false</default>
+        <summary>Enable background blur</summary>
+        <description></description>
+    </key>
+    <key type="b" name="customize-label">
+        <default>false</default>
+        <summary>Customize the label</summary>
+        <description>Customize the label with border and color.</description>
+    </key>
+    <key type="b" name="hide-labels">
+        <default>false</default>
+        <summary>Hide the label</summary>
+        <description>Do not show the labels at all.</description>
+    </key>
+    <key type="(dddd)" name="label-background-color">
+        <default>(0.,0.,0.,0.25)</default>
+        <summary>label background color</summary>
+        <description>Set label panel background color.</description>
+    </key>
+    <key type="(dddd)" name="label-foreground-color">
+        <default>(1.,1.,1.,1.)</default>
+        <summary>label foreground color</summary>
+        <description>Set label panel foreground color.</description>
+    </key>
+        <key type="(dddd)" name="label-border-color">
+        <default>(1.,1.,1.,1.)</default>
+        <summary>border color</summary>
+        <description>Set label border color.</description>
+    </key>
+    <key type="d" name="label-border-radius">
+        <default>0</default>
+        <summary>Border radius</summary>
+        <description>Border radius.</description>
+    </key>
+    <key type="i" name="label-border-thickness">
+        <default>0</default>
+        <summary>Border thickness</summary>
+        <description>Border thickness.</description>
+    </key>
+    <key type="d" name="border-radius">
+        <default>3</default>
+        <summary>Border radius</summary>
+        <description>Set dash background border radius.</description>
+    </key>
+    <key type="(dddd)" name="border-color">
+        <default>(1.,1.,1.,1.)</default>
+        <summary>border color</summary>
+        <description>Set dock border color.</description>
+    </key>
+    <key type="i" name="border-thickness">
+        <default>0</default>
+        <summary>Border thickness</summary>
+        <description>Border thickness.</description>
+    </key>
+    <key type="(dddd)" name="separator-color">
+        <default>(1.,1.,1.,1.)</default>
+        <summary>Separator color</summary>
+        <description>Set dock separator color.</description>
+    </key>
+    <key type="b" name="adaptive-contrast">
+        <default>false</default>
+        <summary>Adaptive contrast</summary>
+        <description>Apps grid icon, separators and running indicators turn light over a dark wallpaper and dark over a light one. Overrides Separator Color (keeping its opacity) and Indicator Color.</description>
+    </key>
+    <key type="d" name="icon-border-radius">
+        <default>3</default>
+        <summary>Border radius</summary>
+        <description>Set dash background border radius.</description>
+    </key>
+    <key type="(dddd)" name="icon-border-color">
+        <default>(1.,1.,1.,1.)</default>
+        <summary>border color</summary>
+        <description>Set dock border color.</description>
+    </key>
+    <key type="i" name="icon-border-thickness">
+        <default>0</default>
+        <summary>Border thickness</summary>
+        <description>Border thickness.</description>
+    </key>
+    <key type="(dddd)" name="icon-background-color">
+        <default>(1.,1.,1.,0)</default>
+        <summary>Separator color</summary>
+        <description>Set dock separator color.</description>
+    </key>
+    <key type="i" name="separator-thickness">
+        <default>0</default>
+        <summary>Separator thickness</summary>
+        <description>separator thickness.</description>
+    </key>
+    <key type="d" name="dock-padding">
+        <default>0.5</default>
+        <summary>Dock padding</summary>
+        <description>Dock padding.</description>
+    </key>
+    <key type="d" name="icon-spacing">
+        <default>0.5</default>
+        <summary>Icon spacing</summary>
+        <description>Icon spacing.</description>
+    </key>
+    <key type="b" name="trash-icon">
+        <default>false</default>
+        <summary>Show trash icon</summary>
+        <description>Show a dynamic trash icon.</description>
+    </key>
+    <key type="i" name="trash-style">
+        <default>0</default>
+        <summary>Trash icon style</summary>
+        <description>0: the icon theme's trash icon. 1: a translucent glass bin that shows what is in the Trash (fill level, thumbnails and file types).</description>
+    </key>
+    <key type="b" name="downloads-icon">
+        <default>false</default>
+        <summary>Show downloads icon</summary>
+        <description>Show a dynamic downloads icon.</description>
+    </key>
+    <key type="b" name="downloads-icon-rotate-labels">
+        <default>false</default>
+        <summary>Rotate labels of downloads icon</summary>
+        <description>Rotate labels of downloads icon.</description>
+    </key>
+    <key type="b" name="documents-icon">
+        <default>false</default>
+        <summary>Show documents icon</summary>
+        <description>Show a dynamic documents icon.</description>
+    </key>
+    <key type="s" name="documents-path">
+        <default>""</default>
+        <summary>Documents path</summary>
+        <description>Path to monitor</description>
+    </key>
+    <key type="s" name="downloads-path">
+        <default>""</default>
+        <summary>Downloads path</summary>
+        <description>Path to monitor</description>
+    </key>
+    <key type="s" name="folder-stacks">
+        <default>"[]"</default>
+        <summary>Folder stacks</summary>
+        <description>JSON array of extra folders shown as stacks next to Downloads: "path" or {"path", "title", "icon", "view", "sort", "display", "group"}; view: fan|grid|list|automatic, sort: date-modified|name|date-added|date-created|kind, display: folder|stack, group: none|date|kind</description>
+    </key>
+    <key type="i" name="downloads-stack-view">
+        <default>0</default>
+        <summary>Downloads stack view</summary>
+        <description>How the Downloads stack opens: 0 fan, 1 grid, 2 list, 3 automatic (fan if the files fit, else grid).</description>
+    </key>
+    <key type="i" name="downloads-stack-sort">
+        <default>0</default>
+        <summary>Downloads stack sort</summary>
+        <description>Downloads stack order: 0 date modified, 1 name, 2 date added, 3 date created, 4 kind.</description>
+    </key>
+    <key type="i" name="downloads-stack-display">
+        <default>1</default>
+        <summary>Downloads stack display</summary>
+        <description>Downloads dock icon: 0 the folder icon, 1 a pile of the newest files (macOS "Display as Stack").</description>
+    </key>
+    <key type="i" name="downloads-stack-group">
+        <default>1</default>
+        <summary>Downloads stack grouping</summary>
+        <description>How the Grid and List dropdown of the Downloads stack batches its files under headers: 0 none, 1 by date (Today, Yesterday, Previous 7 Days, ...), 2 by kind (Images, Documents, Archives, ...).</description>
+    </key>
+    <key type="b" name="screenshots-icon">
+        <default>true</default>
+        <summary>Show the Screenshots stack</summary>
+        <description>Show a stack for the folder GNOME saves screenshots to (Pictures/Screenshots) in the same group as Downloads, Recents and the Trash. A folder-stacks entry for the same folder takes over its options.</description>
+    </key>
+    <key type="i" name="recents-stack-view">
+        <default>3</default>
+        <summary>Recents stack view</summary>
+        <description>How the Recents stack opens: 0 fan, 1 grid, 2 list, 3 automatic (fan if the apps fit, else grid).</description>
+    </key>
+    <key type="i" name="recents-stack-display">
+        <default>1</default>
+        <summary>Recents stack display</summary>
+        <description>Recents dock icon: 0 a plain icon, 1 a pile of the most recent apps.</description>
+    </key>
+    <key type="i" name="max-recent-items">
+        <default>0</default>
+        <summary>Maximum recent items</summary>
+        <description>Maximum recent items.</description>
+    </key>
+    <key type="b" name="mounted-icon">
+        <default>false</default>
+        <summary>Show mounted device icons</summary>
+        <description>Show a mounted device icon.</description>
+    </key>
+    <key type="b" name="file-drops">
+        <default>false</default>
+        <summary>File drops</summary>
+        <description>Accept files dragged onto the dock: Trash moves them to the trash, an app opens them, a folder stack or mounted drive moves or copies them there, as in the macOS Dock. Runs a small GTK helper process that receives the drop.</description>
+    </key>
+    <key type="b" name="clock-icon">
+        <default>false</default>
+        <summary>Dynamic clock</summary>
+        <description>Show a dynamic clock icon.</description>
+    </key>
+    <key type="i" name="clock-style">
+        <default>0</default>
+        <summary>Clock style</summary>
+        <description>Set clock icon style.</description>
+    </key>
+    <key type="b" name="calendar-icon">
+        <default>false</default>
+        <summary>Dynamic calendar</summary>
+        <description>Show a dynamic calendar icon.</description>
+    </key>
+    <key type="b" name="peek-hidden-icons">
+        <default>false</default>
+        <summary>Peek hidden icons</summary>
+        <description>Partially show animated icons when the dash is auto hidden.</description>
+    </key>
+    <key type="i" name="animation-fps">
+        <default>0</default>
+        <summary>Animation frame rate</summary>
+        <description>Set animation frame rate. High setting shows smooth animations at the expense of high cpu resource.</description>
+    </key>
+    <key type="d" name="animation-magnify">
+        <default>0.30</default>
+        <summary>Icon magnification</summary>
+        <description>Set icons spread radius when zoomed and animated.</description>
+    </key>
+    <key type="i" name="animation-type">
+        <default>0</default>
+        <summary>Animation type</summary>
+        <description>Animation type.</description>
+    </key>
+    <key type="d" name="animation-spread">
+        <default>0.75</default>
+        <summary>Icons spread</summary>
+        <description>Icon spread when animated.</description>
+    </key>
+    <key type="d" name="animation-rise">
+        <default>0.25</default>
+        <summary>Icons rise</summary>
+        <description>Icon rise when animated.</description>
+    </key>
+    <key type="i" name="animation-rise-curve">
+        <default>0</default>
+        <summary>Curve function</summary>
+        <description>Rise curve function.</description>
+    </key>
+    <key type="d" name="animation-bounce-height">
+        <default>0.75</default>
+        <summary>Icons bounce height</summary>
+        <description>Icon bounce height when clicked.</description>
+    </key>
+    <key type="i" name="animation-bounce-frequency">
+        <default>0</default>
+        <summary>Icons bounce frequency</summary>
+        <description>Icon bounce frequency when clicked.</description>
+    </key>
+    <key type="d" name="items-pullout-angle">
+        <default>0.5</default>
+        <summary>Items angle</summary>
+        <description>Folder items pullout angle.</description>
+    </key>
+    <key type="d" name="edge-distance">
+        <default>0</default>
+        <summary>Edge distance</summary>
+        <description>Adjust dock distance from screen edge.</description>
+    </key>
+    <key type="b" name="panel-mode">
+        <default>false</default>
+        <summary>Panel mode</summary>
+        <description>Dock the dash on a full-width panel.</description>
+    </key>
+    <key type="b" name="favorites-only">
+        <default>false</default>
+        <summary>Favorits apps only</summary>
+        <description>Show only icons of favorite apps.</description>
+    </key>
+    <key type="b" name="click-minimizes">
+        <default>true</default>
+        <summary>Click minimizes focused app</summary>
+        <description>Clicking the icon of the focused app minimizes its windows. Off: the click does nothing, as on macOS.</description>
+    </key>
+    <key type="i" name="shift-click-action">
+        <default>0</default>
+        <summary>Shift+click action</summary>
+        <description>0: toggle maximize of the focused window (upstream). 1: open a new window (Ubuntu Dock default).</description>
+    </key>
+    <key type="i" name="recent-apps-count">
+        <range min="0" max="50"/>
+        <default>20</default>
+        <summary>Recent apps in dock</summary>
+        <description>The Recents stack lists up to this many recently closed, non-pinned apps. It stands first in the group with Downloads, Screenshots and the Trash and opens as a fan, grid or list of app icons. 0: no Recents stack.</description>
+    </key>
+    <key type="as" name="recent-apps">
+        <default>[]</default>
+        <summary>Recently closed apps</summary>
+        <description>Most-recently-closed app ids, newest first; maintained by the extension while recent-apps-count is above 0.</description>
+    </key>
+    <key type="b" name="menu-open-at-login">
+        <default>false</default>
+        <summary>Open at Login menu item</summary>
+        <description>Add an "Open at Login" switch to the app icon menu; it creates or removes ~/.config/autostart/APP.desktop.</description>
+    </key>
+    <key type="b" name="keyboard-focus">
+        <default>false</default>
+        <summary>Keyboard focus into the dock</summary>
+        <description>List the dock as "Dock" in Ctrl+Alt+Tab; selecting it reveals the dock and highlights the focused icon (arrows move, Enter opens).</description>
+    </key>
+    <key type="b" name="hotkeys-overlay">
+        <default>false</default>
+        <summary>Number overlay while holding Super</summary>
+        <description>While Super is held for about half a second, show the numbers 1-9 of Super+N on the first nine app icons.</description>
+    </key>
+    <key type="b" name="drag-off-remove">
+        <default>false</default>
+        <summary>Drag icons off the dock to remove them</summary>
+        <description>Drag an app icon off the dock and hold it there for about a second: "Remove" shows, and letting go takes the icon off the dock with a poof, as on macOS (a pinned app is unpinned, a recent app leaves the recents). Letting go sooner, or back over the dock, keeps the icon.</description>
+    </key>
+    <key type="b" name="background-menu">
+        <default>false</default>
+        <summary>Dock background menu</summary>
+        <description>Right-clicking the dock background or separator opens a menu with Hiding, Magnification, Position on Screen and Dock Settings, as on macOS.</description>
+    </key>
+    <key type="b" name="spring-loading">
+        <default>false</default>
+        <summary>Spring-loaded icons</summary>
+        <description>While dragging files, an autohidden dock is revealed, and holding the files over an app icon for a second brings that app forward, as on macOS.</description>
+    </key>
+    <key type="as" name="toggle-autohide-shortcut">
+        <default>[]</default>
+        <summary>Toggle autohide shortcut</summary>
+        <description>Keyboard shortcut that turns dock hiding on and off (macOS: Option-Command-D, here &lt;Super&gt;&lt;Alt&gt;d).</description>
+    </key>
+    <key type="b" name="click-action-spread">
+        <default>false</default>
+        <summary>Click spreads app windows</summary>
+        <description>Clicking the icon of the focused app that has several windows shows only its windows (Ubuntu Dock focus-or-appspread). Off: the click focuses or minimizes as usual.</description>
+    </key>
+    <key type="b" name="show-all-windows-item">
+        <default>false</default>
+        <summary>Show All Windows menu item</summary>
+        <description>Add &quot;Show All Windows&quot; to the app icon menu: an overview showing only that app's windows, as on macOS.</description>
+    </key>
+    <key type="b" name="isolate-workspaces">
+        <default>false</default>
+        <summary>Isolate workspaces</summary>
+        <description>Running apps, running indicators and click/scroll window cycling only count windows on the active workspace, as in Ubuntu Dock.</description>
+    </key>
+    <key type="b" name="minimized-window-tiles">
+        <default>false</default>
+        <summary>Minimized window tiles</summary>
+        <description>Show each minimized window as a live thumbnail before the Trash; windows minimize into their thumbnail and restore out of it, as on macOS when &quot;Minimize windows into application icon&quot; is off.</description>
+    </key>
+    <key type="b" name="apps-icon">
+        <default>true</default>
+        <summary>Apps icon</summary>
+        <description>Show the apps icon.</description>
+    </key>
+    <key type="b" name="icon-shadow">
+        <default>true</default>
+        <summary>Icon shadow</summary>
+        <description>Add the icon shadow effect.</description>
+    </key>
+    <key type="b" name="apps-icon-front">
+        <default>false</default>
+        <summary>Apps icon at front</summary>
+        <description>Position the apps icon at the front.</description>
+    </key>
+    <key type="b" name="app-grid-pile">
+        <default>true</default>
+        <summary>Apps icon as a pile of apps</summary>
+        <description>Show the apps icon as a pile of app icons on a translucent rounded plate instead of the nine dots: the most used apps and the newest installed ones that are not in the dock. Clicking it opens the app grid as before.</description>
+    </key>
+    <key type="i" name="app-grid-pile-recent">
+        <range min="0" max="6"/>
+        <default>3</default>
+        <summary>Recently installed apps in the pile</summary>
+        <description>How many of the newest installed apps that are not pinned or running the apps icon's pile shows.</description>
+    </key>
+    <key type="i" name="app-grid-pile-frequent">
+        <range min="0" max="12"/>
+        <default>6</default>
+        <summary>Most used apps in the pile</summary>
+        <description>How many of the most used apps the apps icon's pile shows.</description>
+    </key>
+    <key type="i" name="preferred-monitor">
+        <default>0</default>
+        <summary>Preferred monitor to dock</summary>
+        <description>Show dock on selected monitor.</description>
+    </key>
+    <key type="i" name="multi-monitor-preference">
+        <default>0</default>
+        <summary>Multi-monitor dock preference</summary>
+        <description>Multi-monitor dock locations.</description>
+    </key>
+    <key type="i" name="dock-location">
+        <default>0</default>
+        <summary>Dock location</summary>
+        <description>Set dock position on the screen.</description>
+    </key>
+    <key type="i" name="running-indicator-style">
+        <default>0</default>
+        <summary>Running window indicator</summary>
+        <description>Customize the running window indicator style.</description>
+    </key>
+    <key type="i" name="running-indicator-size">
+        <default>0</default>
+        <summary>Running window indicator size</summary>
+        <description>Customize the running window indicator size.</description>
+    </key>
+    <key type="(dddd)" name="running-indicator-color">
+        <default>(1.,1.,1.,1.)</default>
+        <summary>Running window indicator color</summary>
+        <description>Customize the running window indicator color.</description>
+    </key>
+    <key type="i" name="notification-badge-style">
+        <default>0</default>
+        <summary>Notification badge</summary>
+        <description>Customize the notification badge style.</description>
+    </key>
+    <key type="b" name="launcher-api">
+        <default>false</default>
+        <summary>Unity LauncherEntry API</summary>
+        <description>Show the counts, progress bars and urgency apps publish through com.canonical.Unity.LauncherEntry.</description>
+    </key>
+    <key type="i" name="notification-badge-size">
+        <default>0</default>
+        <summary>Notification badge size</summary>
+        <description>Customize the notification badge size.</description>
+    </key>
+    <key type="(dddd)" name="notification-badge-color">
+        <default>(1.,1.,1.,1.)</default>
+        <summary>Notification badge color</summary>
+        <description>Customize the notification badge color.</description>
+    </key>
+    <key type="d" name="icon-size">
+        <default>0</default>
+        <summary>Icon size</summary>
+        <description>Set icon size.</description>
+    </key>
+    <key type="i" name="icon-resolution">
+        <default>0</default>
+        <summary>Icon quality</summary>
+        <description>Set icon resolution to improve rendering quality.</description>
+    </key>
+    <key type="i" name="blur-resolution">
+        <default>0</default>
+        <summary>Blur quality</summary>
+        <description>Set blur resolution.</description>
+    </key>
+    <key type="b" name="disable-blur-at-overview">
+        <default>true</default>
+        <summary>Disable blur at overview</summary>
+        <description>Disable blur at overview</description>
+    </key>
+    <key type="i" name="icon-effect">
+        <default>0</default>
+        <summary>Icon effect</summary>
+        <description>Set icon rendering effect.</description>
+    </key>
+    <key type="(dddd)" name="icon-effect-color">
+        <default>(1.,1.,1.,1.)</default>
+        <summary>Rendering effect color</summary>
+        <description>Set the icon rendering effect color.</description>
+    </key>
+    <key type="i" name="monitor-count">
+        <default>1</default>
+        <summary>Monitors Count</summary>
+        <description>Monitors found by the extension.</description>
+    </key>
+    <key type="d" name="scroll-sensitivity">
+        <default>0.4</default>
+        <summary>Scroll sensitivity</summary>
+        <description>Scroll sensitivity</description>
+    </key>
+    <key type="d" name="pressure-sense-sensitivity">
+        <default>0.4</default>
+        <summary>Pressure sense sensitivity</summary>
+        <description>Pressure sense sensitivity</description>
+    </key>
+    <key type="s" name="msg-to-pref">
+        <default>""</default>
+        <summary>MsgBus</summary>
+        <description>Preferences-Extension message bus</description>
+    </key>
+    <key type="s" name="msg-to-ext">
+        <default>""</default>
+        <summary>MsgBus</summary>
+        <description>Preferences-Extension message bus</description>
+    </key>
+    <key type="(dddd)" name="drawing-accent-color">
+        <default>(1.,0.,0.,1.)</default>
+        <summary>Primary color</summary>
+        <description>Set primary color.</description>
+    </key>
+    <key type="(dddd)" name="drawing-secondary-color">
+        <default>(1.,0.6,0.,1.)</default>
+        <summary>Secondary color</summary>
+        <description>Set secondary color.</description>
+    </key>
+    <key type="(dddd)" name="drawing-dark-color">
+        <default>(0.2, 0.2, 0.2, 1.)</default>
+        <summary>Dark color</summary>
+        <description>Set dark color.</description>
+    </key>
+    <key type="(dddd)" name="drawing-light-color">
+        <default>(1.,1.,1.,1.)</default>
+        <summary>Light color</summary>
+        <description>Set light color.</description>
+    </key>
+    <key type="(dddd)" name="drawing-dark-foreground">
+        <default>(0.8, 0.8, 0.8, 1.)</default>
+        <summary>Dark foreground color</summary>
+        <description>Set dark foreground color.</description>
+    </key>
+    <key type="(dddd)" name="drawing-light-foreground">
+        <default>(0.3,0.3,0.3,1.)</default>
+        <summary>Light color</summary>
+        <description>Set light foreground color.</description>
+    </key>
+    <key type="i" name="theme">
+        <default>0</default>
+        <summary>Theme</summary>
+        <description>Select a theme.</description>
+    </key>
+    <key type="b" name="blur-background">
+        <default>false</default>
+        <summary>Enable background blur</summary>
+        <description></description>
+    </key>
+    <key type="b" name="glass-material">
+        <default>false</default>
+        <summary>Liquid Glass material</summary>
+        <description>Draw the dock background as refractive glass over a blurred backdrop.</description>
+    </key>
+    <key type="i" name="glass-backdrop">
+        <default>1</default>
+        <summary>Glass backdrop</summary>
+        <description>What the glass shows: 0 = windows and wallpaper (live), 1 = wallpaper only.</description>
+    </key>
+    <key type="d" name="glass-blur">
+        <default>10</default>
+        <summary>Glass blur</summary>
+        <description>Backdrop blur radius in pixels.</description>
+    </key>
+    <key type="d" name="glass-refraction">
+        <default>24</default>
+        <summary>Glass refraction</summary>
+        <description>How far the glass edge bends the backdrop, in pixels.</description>
+    </key>
+    <key type="d" name="glass-rim">
+        <default>1</default>
+        <summary>Glass rim</summary>
+        <description>Strength of the specular edge highlight (0 to 1).</description>
+    </key>
+    <key type="i" name="multi-monitor-filter">
+        <default>0</default>
+        <summary>Multi-Monitor Filter</summary>
+        <description>Filter actions on multi-monitor.</description>
+    </key>
+    <key type="b" name="overview-transparent-background">
+        <default>false</default>
+        <summary>Transparent background</summary>
+        <description>Transparent background on overview.</description>
+    </key>
+    <key type="b" name="overview-transparent-topbar-background">
+        <default>false</default>
+        <summary>Transparent background</summary>
+        <description>Transparent background on overview.</description>
+    </key>
+  </schema>
+</schemalist>

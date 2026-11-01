@@ -1,0 +1,13 @@
+#!/bin/sh
+# Hands the event to the machine-wide hooks (rig's global dispatcher + review gate), if this
+# machine has them. A repo-level core.hooksPath shadows the global one, so every tracked hook
+# ends here; on a clone without global hooks this is a no-op. Usage: chain-global <event> [args]
+event=$1
+shift
+dir=$(git config --global --get core.hooksPath 2>/dev/null)
+dir=${dir:-${XDG_CONFIG_HOME:-$HOME/.config}/git/hooks}
+case "$dir" in "~"/*) dir="$HOME/${dir#\~/}" ;; esac
+# Never chain into ourselves if the global path points at this directory.
+[ "$(cd "$dir" 2>/dev/null && pwd -P)" = "$(cd "$(dirname "$0")" && pwd -P)" ] && exit 0
+[ -x "$dir/$event" ] || exit 0
+exec "$dir/$event" "$@"

@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# Dash2Dock Animated One-Line Installer
+# Hyperdock One-Line Installer
 # Usage:
-#   curl -sSL https://raw.githubusercontent.com/icedman/dash2dock-lite/main/install.sh | bash
+#   curl -sSL https://raw.githubusercontent.com/alex-mextner/hyperdock/main/install.sh | bash
 #   or
-#   bash <(curl -sSL https://raw.githubusercontent.com/icedman/dash2dock-lite/main/install.sh)
+#   bash <(curl -sSL https://raw.githubusercontent.com/alex-mextner/hyperdock/main/install.sh)
 
 set -euo pipefail
 
-REPO="icedman/dash2dock-lite"
-UUID="dash2dock-lite@icedman.github.com"
+REPO="alex-mextner/hyperdock"
+UUID="hyperdock@alex-mextner.github.com"
 INSTALL_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/gnome-shell/extensions/${UUID}"
 
 echo "========================================="
-echo "   Dash2Dock Animated Installer"
+echo "   Hyperdock Installer"
 echo "========================================="
 
 # 1. Dependency checks
@@ -43,7 +43,7 @@ else
   if [ -n "$DESKTOP" ]; then
     echo "    Current desktop session reported: ${DESKTOP}"
   fi
-  echo "    Dash2Dock Animated requires GNOME Shell (42-50+). Installation can proceed,"
+  echo "    Hyperdock requires GNOME Shell 50. Installation can proceed,"
   echo "    but the extension will only function inside a GNOME desktop session."
 fi
 echo ""
@@ -101,14 +101,8 @@ for r in releases:
         is_rec = False
         tag_l = tag.lower()
         if tag_l.startswith('v50') or tag_l == 'g50':
-            compat_info = "[GNOME 45 - 50]"
-            if gnome_major is not None and 45 <= gnome_major <= 50:
-                is_rec = True
-        elif tag_l == 'g45':
-            compat_info = "[GNOME 45 - 46]"
-        elif tag_l == 'g44':
-            compat_info = "[GNOME 42 - 44]"
-            if gnome_major is not None and 42 <= gnome_major <= 44:
+            compat_info = "[GNOME 50]"
+            if gnome_major == 50:
                 is_rec = True
 
         rec_str = ' (Recommended for your GNOME version)' if is_rec else ''
@@ -137,6 +131,7 @@ REC_IDX=""
 while IFS='|' read -r num tag desc url filename is_rec; do
   [ -z "$num" ] && continue
   TAGS[$num]="$tag"
+  # shellcheck disable=SC2034  # filled alongside TAGS/URLS but never read back
   DESCS[$num]="$desc"
   URLS[$num]="$url"
   FILENAMES[$num]="$filename"
@@ -198,11 +193,6 @@ CHOSEN_FILE="${FILENAMES[$CHOICE]}"
 IS_FORCE_INSTALL=0
 if [ -n "$GNOME_MAJOR" ]; then
   CHOSEN_MAX=50
-  if [[ "${CHOSEN_TAG,,}" =~ ^g44 ]]; then
-    CHOSEN_MAX=44
-  elif [[ "${CHOSEN_TAG,,}" =~ ^g45 ]]; then
-    CHOSEN_MAX=46
-  fi
 
   if [ "$GNOME_MAJOR" -gt "$CHOSEN_MAX" ]; then
     IS_FORCE_INSTALL=1
@@ -215,6 +205,10 @@ if [ -n "$GNOME_MAJOR" ]; then
       exit 0
     fi
     echo "Proceeding with force install..."
+  elif [ "$GNOME_MAJOR" -lt 50 ]; then
+    echo "Error: Hyperdock requires GNOME Shell 50; your system runs GNOME ${GNOME_MAJOR}." >&2
+    echo "       For older GNOME versions use the upstream project." >&2
+    exit 1
   fi
 fi
 
@@ -276,7 +270,7 @@ echo "========================================="
 # Ask to enable the extension
 if command -v gnome-extensions >/dev/null 2>&1; then
   echo ""
-  printf "Would you like to enable Dash2Dock Animated now? [Y/n]: "
+  printf "Would you like to enable Hyperdock now? [Y/n]: "
   read -r enable_confirm < "$INPUT_SRC" || enable_confirm="y"
   if [[ ! "${enable_confirm,,}" =~ ^n ]]; then
     echo "Enabling extension $UUID..."
@@ -298,11 +292,4 @@ fi
 echo "  - If the dock does not appear immediately, restart GNOME Shell:"
 echo "     * On X11: Press Alt+F2, type 'r', and press Enter."
 echo "     * On Wayland: Log out and log back in."
-echo ""
-echo "-----------------------------------------"
-echo "Support Dash2Dock Animated:"
-echo "  If you enjoy this extension, consider supporting development:"
-echo "  - Buy Me A Coffee: https://www.buymeacoffee.com/icedman"
-echo "  - Ko-fi:           https://ko-fi.com/icedman"
-echo "-----------------------------------------"
 echo ""

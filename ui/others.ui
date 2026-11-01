@@ -22,6 +22,196 @@
         </child>
         <child>
           <object class="AdwActionRow">
+            <property name="title" translatable="yes">Click Minimizes</property>
+            <property name="subtitle" translatable="yes">Clicking the focused app's icon minimizes its windows. Off: nothing happens, as on macOS.</property>
+            <property name="activatable-widget">click-minimizes</property>
+            <child>
+              <object class="GtkSwitch" id="click-minimizes">
+                <property name="valign">center</property>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="AdwActionRow">
+            <property name="title" translatable="yes">Shift+Click</property>
+            <property name="subtitle" translatable="yes">What Shift+clicking a running app's icon does.</property>
+            <property name="activatable-widget">shift-click-action</property>
+            <child>
+              <object class="GtkDropDown" id="shift-click-action">
+                <property name="valign">center</property>
+                <property name="model">shift-click-action-model</property>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="AdwSpinRow" id="recent-apps-count">
+            <property name="title" translatable="yes">Recent Apps</property>
+            <property name="subtitle" translatable="yes">How many recently closed apps the Recents stack lists. It stands first in the group with Downloads, Screenshots and the Trash. 0 hides it.</property>
+            <property name="adjustment">recent-apps-count-adjust</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwActionRow">
+            <property name="title" translatable="yes">Recents View</property>
+            <property name="subtitle" translatable="yes">Open the Recents stack as a fan, a grid, a list, or automatically.</property>
+            <property name="activatable-widget">recents-stack-view</property>
+            <child>
+              <object class="GtkDropDown" id="recents-stack-view">
+                <property name="valign">center</property>
+                <property name="model">downloads-stack-view-model</property>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="AdwActionRow">
+            <property name="title" translatable="yes">Recents Display As</property>
+            <property name="subtitle" translatable="yes">Show a plain icon, or a pile of the most recent apps.</property>
+            <property name="activatable-widget">recents-stack-display</property>
+            <child>
+              <object class="GtkDropDown" id="recents-stack-display">
+                <property name="valign">center</property>
+                <property name="model">recents-stack-display-model</property>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="AdwActionRow">
+            <property name="title" translatable="yes">Screenshots Stack</property>
+            <property name="subtitle" translatable="yes">Show a stack for the folder screenshots are saved to, next to Downloads.</property>
+            <property name="activatable-widget">screenshots-icon</property>
+            <child>
+              <object class="GtkSwitch" id="screenshots-icon">
+                <property name="valign">center</property>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="AdwActionRow">
+            <property name="title" translatable="yes">Open at Login in Menu</property>
+            <property name="subtitle" translatable="yes">Add an "Open at Login" switch to the app icon menu (manages ~/.config/autostart).</property>
+            <property name="activatable-widget">menu-open-at-login</property>
+            <child>
+              <object class="GtkSwitch" id="menu-open-at-login">
+                <property name="valign">center</property>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="AdwActionRow">
+            <property name="title" translatable="yes">Click Shows App Windows</property>
+            <property name="subtitle" translatable="yes">Clicking the focused app's icon when it has several windows shows only its windows (App Exposé).</property>
+            <property name="activatable-widget">click-action-spread</property>
+            <child>
+              <object class="GtkSwitch" id="click-action-spread">
+                <property name="valign">center</property>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="AdwActionRow">
+            <property name="title" translatable="yes">Drag Off to Remove</property>
+            <property name="subtitle" translatable="yes">Drag a pinned or recent icon away from the dock and drop it to remove it, as on macOS.</property>
+            <property name="activatable-widget">drag-off-remove</property>
+            <child>
+              <object class="GtkSwitch" id="drag-off-remove">
+                <property name="valign">center</property>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="AdwActionRow">
+            <property name="title" translatable="yes">Show All Windows Menu Item</property>
+            <property name="subtitle" translatable="yes">Add &quot;Show All Windows&quot; (App Exposé) to the app icon menu.</property>
+            <property name="activatable-widget">show-all-windows-item</property>
+            <child>
+              <object class="GtkSwitch" id="show-all-windows-item">
+                <property name="valign">center</property>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="AdwActionRow">
+            <property name="title" translatable="yes">Keyboard Focus (Ctrl+Alt+Tab)</property>
+            <property name="subtitle" translatable="yes">Ctrl+Alt+Tab lists the dock as "Dock": it is revealed and the focused icon is highlighted; arrows move, Enter opens.</property>
+            <property name="activatable-widget">keyboard-focus</property>
+            <child>
+              <object class="GtkSwitch" id="keyboard-focus">
+                <property name="valign">center</property>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="AdwActionRow">
+            <property name="title" translatable="yes">Isolate Workspaces</property>
+            <property name="subtitle" translatable="yes">Only show running apps and indicators for windows on the current workspace.</property>
+            <property name="activatable-widget">isolate-workspaces</property>
+            <child>
+              <object class="GtkSwitch" id="isolate-workspaces">
+                <property name="valign">center</property>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="AdwActionRow">
+            <property name="title" translatable="yes">Dock Background Menu</property>
+            <property name="subtitle" translatable="yes">Right-click the dock background or separator for Hiding, Magnification, Position and Dock Settings, as on macOS.</property>
+            <property name="activatable-widget">background-menu</property>
+            <child>
+              <object class="GtkSwitch" id="background-menu">
+                <property name="valign">center</property>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="AdwActionRow">
+            <property name="title" translatable="yes">Number Overlay on Super</property>
+            <property name="subtitle" translatable="yes">While Super is held, show the Super+1..9 numbers on the first nine app icons.</property>
+            <property name="activatable-widget">hotkeys-overlay</property>
+            <child>
+              <object class="GtkSwitch" id="hotkeys-overlay">
+                <property name="valign">center</property>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="AdwActionRow">
+            <property name="title" translatable="yes">Spring-Loaded Icons</property>
+            <property name="subtitle" translatable="yes">While dragging files, reveal a hidden dock; hold the files over an app icon to bring the app forward, as on macOS.</property>
+            <property name="activatable-widget">spring-loading</property>
+            <child>
+              <object class="GtkSwitch" id="spring-loading">
+                <property name="valign">center</property>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="AdwActionRow">
+            <property name="title" translatable="yes">Minimized Window Tiles</property>
+            <property name="subtitle" translatable="yes">Show minimized windows as thumbnails before the Trash, as on macOS.</property>
+            <property name="activatable-widget">minimized-window-tiles</property>
+            <child>
+              <object class="GtkSwitch" id="minimized-window-tiles">
+                <property name="valign">center</property>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="AdwActionRow">
             <property name="title" translatable="yes">Apps Icon</property>
             <property name="subtitle" translatable="yes">Show the Overview Apps icon.</property>
             <property name="activatable-widget">apps-icon</property>
@@ -44,6 +234,32 @@
             </child>
           </object>
         </child>
+        <child>
+          <object class="AdwActionRow">
+            <property name="title" translatable="yes">Apps Icon as a Pile</property>
+            <property name="subtitle" translatable="yes">Show the Apps icon as a pile of app icons on a translucent plate instead of the nine dots.</property>
+            <property name="activatable-widget">app-grid-pile</property>
+            <child>
+              <object class="GtkSwitch" id="app-grid-pile">
+                <property name="valign">center</property>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="AdwSpinRow" id="app-grid-pile-recent">
+            <property name="title" translatable="yes">Pile: Recently Installed</property>
+            <property name="subtitle" translatable="yes">How many of the newest installed apps that are not in the dock the pile shows.</property>
+            <property name="adjustment">app-grid-pile-recent-adjust</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwSpinRow" id="app-grid-pile-frequent">
+            <property name="title" translatable="yes">Pile: Most Used</property>
+            <property name="subtitle" translatable="yes">How many of the most used apps the pile shows.</property>
+            <property name="adjustment">app-grid-pile-frequent-adjust</property>
+          </object>
+        </child>
       </object>
     </child>
     <child>
@@ -58,6 +274,19 @@
             <child>
               <object class="GtkSwitch" id="trash-icon">
                 <property name="valign">center</property>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="AdwActionRow">
+            <property name="title" translatable="yes">Trash Style</property>
+            <property name="subtitle" translatable="yes">Glass: a translucent bin showing what is inside — fill level, thumbnails and file types.</property>
+            <property name="activatable-widget">trash-style</property>
+            <child>
+              <object class="GtkDropDown" id="trash-style">
+                <property name="valign">center</property>
+                <property name="model">trash-style-model</property>
               </object>
             </child>
           </object>
@@ -99,6 +328,18 @@
           </object>
         </child>
         <child>
+          <object class="AdwActionRow">
+            <property name="title" translatable="yes">File Drops</property>
+            <property name="subtitle" translatable="yes">Drop files from Files or any app onto the dock: Trash moves them to the trash, an app opens them, a folder stack or drive moves or copies them there, as on macOS. Runs a small helper process.</property>
+            <property name="activatable-widget">file-drops</property>
+            <child>
+              <object class="GtkSwitch" id="file-drops">
+                <property name="valign">center</property>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
           <object class="AdwActionRow" id="downloads-folder-row">
             <property name="visible">true</property>
             <property name="title" translatable="yes"/>
@@ -124,6 +365,74 @@
                 <style>
                   <class name="circular"/>
                   <!-- <class name="destructive-action"/> -->
+                </style>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="AdwActionRow">
+            <property name="title" translatable="yes">Downloads View</property>
+            <property name="subtitle" translatable="yes">Open the Downloads stack as a fan, a grid, a list, or automatically.</property>
+            <property name="activatable-widget">downloads-stack-view</property>
+            <child>
+              <object class="GtkDropDown" id="downloads-stack-view">
+                <property name="valign">center</property>
+                <property name="model">downloads-stack-view-model</property>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="AdwActionRow">
+            <property name="title" translatable="yes">Downloads Sort By</property>
+            <property name="subtitle" translatable="yes">Order of the files in the Downloads stack.</property>
+            <property name="activatable-widget">downloads-stack-sort</property>
+            <child>
+              <object class="GtkDropDown" id="downloads-stack-sort">
+                <property name="valign">center</property>
+                <property name="model">downloads-stack-sort-model</property>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="AdwActionRow">
+            <property name="title" translatable="yes">Downloads Display As</property>
+            <property name="subtitle" translatable="yes">Show the folder icon, or the top file like a stack.</property>
+            <property name="activatable-widget">downloads-stack-display</property>
+            <child>
+              <object class="GtkDropDown" id="downloads-stack-display">
+                <property name="valign">center</property>
+                <property name="model">downloads-stack-display-model</property>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="AdwActionRow">
+            <property name="title" translatable="yes">Downloads Group By</property>
+            <property name="subtitle" translatable="yes">Batch the files of the Downloads grid and list under headers: by date or by kind.</property>
+            <property name="activatable-widget">downloads-stack-group</property>
+            <child>
+              <object class="GtkDropDown" id="downloads-stack-group">
+                <property name="valign">center</property>
+                <property name="model">downloads-stack-group-model</property>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="AdwExpanderRow" id="folder-stacks-row">
+            <property name="title" translatable="yes">Folder Stacks</property>
+            <property name="subtitle" translatable="yes">More folders shown as stacks next to Downloads. Right-click a stack in the dock for its sort order, icon and view.</property>
+            <child type="suffix">
+              <object class="GtkButton" id="folder-stacks-add">
+                <property name="valign">center</property>
+                <property name="icon-name">list-add-symbolic</property>
+                <property name="tooltip-text" translatable="yes">Add folder</property>
+                <style>
+                  <class name="flat"/>
                 </style>
               </object>
             </child>
@@ -162,9 +471,9 @@
         <property name="title" translatable="yes">Custom Drawn Icons</property>
         <property name="description" translatable="yes">Override icon look with custom drawing and animation.</property>
         <child>
-          <object class="AdwActionRow">
+          <object class="AdwActionRow" id="clock-icon-row">
             <property name="title" translatable="yes">Clock</property>
-            <property name="subtitle" translatable="yes">Show an analog clock widget. Requires Clocks app (gnome-clocks) pinned to the dash.</property>
+            <property name="subtitle" translatable="yes">Show an analog clock widget. Pins the Clocks app to the dock when it is not pinned.</property>
             <property name="activatable-widget">clock-icon</property>
             <child>
               <object class="GtkSwitch" id="clock-icon">
@@ -188,9 +497,9 @@
           </object>
         </child>
         <child>
-          <object class="AdwActionRow">
+          <object class="AdwActionRow" id="calendar-icon-row">
             <property name="title" translatable="yes">Calendar</property>
-            <property name="subtitle" translatable="yes">Show an calendar widget. Requires Calendar app (gnome-calendar) pinned to the dash.</property>
+            <property name="subtitle" translatable="yes">Show a calendar widget with today's date. Pins the Calendar app to the dock when it is not pinned.</property>
             <property name="activatable-widget">calendar-icon</property>
             <child>
               <object class="GtkSwitch" id="calendar-icon">
@@ -199,22 +508,14 @@
             </child>
           </object>
         </child>
-        <child>
-          <object class="AdwActionRow" id="calendar-style-row">
-            <property name="visible">false</property>
-            <property name="title" translatable="yes">Calendar Style</property>
-            <property name="subtitle" translatable="yes">Set calendar style.</property>
-            <property name="activatable-widget">calendar-style</property>
-            <child>
-              <object class="GtkDropDown" id="calendar-style">
-                <property name="valign">center</property>
-                <property name="model">calendar-style-model</property>
-              </object>
-            </child>
-          </object>
-        </child>
       </object>
     </child>
+  </object>
+  <object class="GtkStringList" id="trash-style-model">
+    <items>
+      <item>Theme Icon</item>
+      <item>Glass</item>
+    </items>
   </object>
   <object class="GtkStringList" id="clock-style-model">
     <items>
@@ -228,14 +529,6 @@
       <item>Framed 4</item>
     </items>
   </object>
-  <object class="GtkStringList" id="calendar-style-model">
-    <items>
-      <item>Overlay 1</item>
-      <item>Overlay 2</item>
-      <item>Framed 1</item>
-      <item>Framed 2</item>
-    </items>
-  </object>
   <object class="GtkStringList" id="max-recent-items-model">
     <items>
       <item>5</item>
@@ -245,6 +538,69 @@
       <item>15</item>
       <item>20</item>
       <item>25</item>
+    </items>
+  </object>
+  <object class="GtkStringList" id="shift-click-action-model">
+    <items>
+      <item translatable="yes">Maximize / Restore</item>
+      <item translatable="yes">New Window</item>
+    </items>
+  </object>
+  <object class="GtkAdjustment" id="app-grid-pile-recent-adjust">
+    <property name="lower">0</property>
+    <property name="upper">6</property>
+    <property name="step-increment">1</property>
+    <property name="page-increment">1</property>
+    <property name="value">3</property>
+  </object>
+  <object class="GtkAdjustment" id="app-grid-pile-frequent-adjust">
+    <property name="lower">0</property>
+    <property name="upper">12</property>
+    <property name="step-increment">1</property>
+    <property name="page-increment">3</property>
+    <property name="value">6</property>
+  </object>
+  <object class="GtkAdjustment" id="recent-apps-count-adjust">
+    <property name="lower">0</property>
+    <property name="upper">50</property>
+    <property name="step-increment">1</property>
+    <property name="page-increment">5</property>
+    <property name="value">20</property>
+  </object>
+  <object class="GtkStringList" id="downloads-stack-view-model">
+    <items>
+      <item translatable="yes">Fan</item>
+      <item translatable="yes">Grid</item>
+      <item translatable="yes">List</item>
+      <item translatable="yes">Automatic</item>
+    </items>
+  </object>
+  <object class="GtkStringList" id="downloads-stack-sort-model">
+    <items>
+      <item translatable="yes">Date Modified</item>
+      <item translatable="yes">Name</item>
+      <item translatable="yes">Date Added</item>
+      <item translatable="yes">Date Created</item>
+      <item translatable="yes">Kind</item>
+    </items>
+  </object>
+  <object class="GtkStringList" id="downloads-stack-display-model">
+    <items>
+      <item translatable="yes">Folder</item>
+      <item translatable="yes">Stack</item>
+    </items>
+  </object>
+  <object class="GtkStringList" id="downloads-stack-group-model">
+    <items>
+      <item translatable="yes">None</item>
+      <item translatable="yes">Date</item>
+      <item translatable="yes">Kind</item>
+    </items>
+  </object>
+  <object class="GtkStringList" id="recents-stack-display-model">
+    <items>
+      <item translatable="yes">Plain icon</item>
+      <item translatable="yes">Stack</item>
     </items>
   </object>
 </interface>

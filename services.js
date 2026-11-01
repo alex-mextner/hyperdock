@@ -1,11 +1,7 @@
 'use strict';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
-import {
-  trySpawnCommandLine,
-  getDownloadsDir,
-  getDocumentsDir,
-} from './utils.js';
+import { trySpawnCommandLine, getDownloadsDir, getScreenshotsDir } from './utils.js';
 // import { trySpawnCommandLine } from 'resource:///org/gnome/shell/misc/util.js';
 
 import Gio from 'gi://Gio';
@@ -15,10 +11,44 @@ import Graphene from 'gi://Graphene';
 
 import { Clock } from './apps/clock.js';
 import { Calendar } from './apps/calendar.js';
+import { MidnightTicker } from './widgetApps.js';
+import { detectWidgetApp } from './widgetAppsGio.js';
+import { GlassTrash } from './apps/trash.js';
+import { LauncherEntries } from './launcherEntry.js';
+import Shell from 'gi://Shell';
+import { STACK_VIEWS, STACK_DISPLAYS, pileLayers } from './stackModel.js';
+import { folderStackSpecs, recentItems } from './stackSources.js';
+import { StackPile } from './stackPile.js';
 
 // sync with animator
 const CANVAS_SIZE = 120;
 const DEBOUNCE_CHECK_TIMEOUT = 750;
+
+// Grid/List panels list at most this many files of a folder stack
+const STACK_MAX_FILES = 200;
+
+const byName = (a, b) =>
+  a.name.localeCompare(b.name, undefined, { numeric: true });
+// macOS stack sort orders; dates newest first, ties by name
+const STACK_COMPARE = {
+  name: byName,
+  'date-modified': (a, b) => b.date.tv_sec - a.date.tv_sec || byName(a, b),
+  'date-added': (a, b) => b.created - a.created || byName(a, b),
+  'date-created': (a, b) => b.created - a.created || byName(a, b),
+  kind: (a, b) => (a.type ?? '').localeCompare(b.type ?? '') || byName(a, b),
+};
+
+// Directory monitor or null: Gio.File.monitor() throws ("Unable to find
+// default local file monitor type") once inotify instances run out, and that
+// must not abort the whole extension enable.
+function watchDir(file, label) {
+  try {
+    return file.monitor(Gio.FileMonitorFlags.WATCH_MOVES, null);
+  } catch (e) {
+    console.warn(`d2da: ${label}: not watched: ${e.message}`);
+    return null;
+  }
+}
 
 class ServiceCounter {
   constructor(name, interval, callback, advance) {
@@ -37,7 +67,7 @@ class ServiceCounter {
         try {
           this._callback();
         } catch (e) {
-          console.error(`d2da: service ${this.name} update`, e);
+          console.error('d2da: service', this.name, 'update', e);
         }
       }
       return true;
@@ -51,7 +81,6 @@ export const Services = class {
     this._cancellable = new Gio.Cancellable();
     this._mounts = {};
     this.trashApp = null;
-    this.folderApps = {};
     this.mountApps = {};
     this._services = [
       new ServiceCounter('trash', 1000 * 15, this.checkTrash.bind(this)),
@@ -67,31 +96,19 @@ export const Services = class {
         -1
       ),
       new ServiceCounter(
-        'calendar',
-        1000 * 60 * 15,
-        () => {
-          this.extension.docks.forEach((d) => {
-            d._onCalendar();
-          });
-        },
-        -1
-      ),
-      new ServiceCounter(
         'ping',
         1000 * 5,
         () => {
           // deferred stuff is required when .desktop entry if first created
           // check for deferred mounts
           this._commitMounts();
-
-          // notifications
-          this.checkNotifications();
         },
         0
       ),
     ];
 
-    this._disableNotifications = 0;
+    this._startCalendarTicker();
+    this.refreshWidgetApps();
 
     this._deferredMounts = [];
     this._volumeMonitor = Gio.VolumeMonitor.get();
@@ -104,13 +121,14 @@ export const Services = class {
     );
 
     this._trashDir = Gio.File.new_for_uri('trash:///');
-    this._trashMonitor = this._trashDir.monitor(
-      Gio.FileMonitorFlags.WATCH_MOVES,
-      null
-    );
-    this._trashMonitor.connectObject(
+    // monitor() throws when the inotify instance limit is exhausted; the
+    // trash icon then only refreshes on explicit checkTrash() calls.
+    this._trashMonitor = watchDir(this._trashDir, 'trash');
+    this._trashMonitor?.connectObject(
       'changed',
       (fileMonitor, file, otherFile, eventType) => {
+        // the glass bin shows what is inside, so additions count too
+        this._debounceGlassTrash();
         switch (eventType) {
           case Gio.FileMonitorEvent.CHANGED:
           case Gio.FileMonitorEvent.CREATED:
@@ -122,25 +140,33 @@ export const Services = class {
       this
     );
 
-    this.setupDownloads();
+    this.setupFolderStacks();
 
     this._debounceCheckRecents();
 
     //! ***services startup function are blocking calls. async these***
     this.checkTrash();
 
+    this._watchNotifications();
     this.checkNotifications();
+    this.setupLauncherEntries();
 
     this.checkMounts();
     this._commitMounts();
+
+    this.updateTrashStyle();
   }
 
   disable() {
+    this._stopCalendarTicker();
+    this._widgetApps = null;
+    this._unwatchNotifications();
+    this._appNotices = {};
+    this._launcherEntries?.destroy();
+    this._launcherEntries = null;
     this._cancellable?.cancel();
     this._cancellable = null;
-    this._downloadsMonitor?.cancel();
-    this._downloadsMonitor?.disconnectObject(this);
-    this._downloadsMonitor = null;
+    this._teardownFolderStacks();
     this._services = [];
     this._volumeMonitor?.disconnectObject(this);
     this._volumeMonitor = null;
@@ -148,41 +174,157 @@ export const Services = class {
     this._trashMonitor?.disconnectObject(this);
     this._trashMonitor = null;
     this._trashDir = null;
+    this.extension._loTimer?.cancel(this._glassTrashSeq);
+    this._glassTrashSeq = null;
+    this._glassTrash?.destroy();
+    this._glassTrash = null;
     this.extension._loTimer?.cancel(this._debounceRecentsSeq);
-    this.extension._loTimer?.cancel(this._debounceDownloadsSeq);
     this._debounceRecentsSeq = null;
-    this._debounceDownloadsSeq = null;
     this._mounts = {};
     this.trashApp = null;
-    this.folderApps = {};
     this.mountApps = {};
   }
 
-  setupDownloads() {
-    if (this._downloadsMonitor) {
-      this._downloadsMonitor.cancel();
-      this._downloadsMonitor.disconnectObject(this);
-      this._downloadsMonitor = null;
-    }
-    this._downloadsUserDir = this.extension.downloads_path;
-    let fn = this._downloadsUserDir
-      ? Gio.File.new_for_path(this._downloadsUserDir)
-      : null;
-    if (!fn || !fn.query_exists(null)) {
-      this._downloadsUserDir = null;
-    }
-    if (this._downloadsUserDir) {
-      this._downloadsDir = Gio.File.new_for_path(this._downloadsUserDir);
-    } else {
-      // fallback
-      this._downloadsDir = Gio.File.new_for_path(getDownloadsDir());
-    }
+  // The apps the live Calendar and Clock icons draw over: the dock item is
+  // matched by app id, not by icon name, so a handler such as Thunderbird (no
+  // Calendar app installed) works too. Detected on enable and whenever the
+  // installed apps change; the per-frame path only compares ids.
+  refreshWidgetApps() {
+    this._widgetApps = {
+      calendar: detectWidgetApp('calendar'),
+      clock: detectWidgetApp('clock'),
+    };
+  }
 
-    this._downloadsMonitor = this._downloadsDir.monitor(
-      Gio.FileMonitorFlags.WATCH_MOVES,
-      null
+  widgetApp(kind) {
+    return this._widgetApps?.[kind] ?? null;
+  }
+
+  // The date must change within a minute of midnight, so no polling: one
+  // timer aimed at the next midnight, re-aimed on resume from suspend and on
+  // timezone changes (the monotonic clock behind GLib timers stops while
+  // suspended, so the pending timer is stale after resume). A manual clock
+  // jump (timedatectl set-time) fires no property change: the date is then
+  // right again at the next midnight redraw.
+  _startCalendarTicker() {
+    this._stopCalendarTicker();
+    const redraw = () => this.extension.docks.forEach((d) => d._onCalendar());
+    this._calendarTicker = new MidnightTicker({
+      schedule: (fn, ms) =>
+        GLib.timeout_add(GLib.PRIORITY_DEFAULT, ms, () => {
+          fn();
+          return GLib.SOURCE_REMOVE;
+        }),
+      cancel: (id) => GLib.source_remove(id),
+      now: () => new Date(),
+      onMidnight: redraw,
+    });
+    this._calendarTicker.start();
+
+    const rearm = () => this._calendarTicker?.rearm();
+    const bus = Gio.DBus.system;
+    this._dateSubs = [
+      bus.signal_subscribe(
+        'org.freedesktop.login1',
+        'org.freedesktop.login1.Manager',
+        'PrepareForSleep',
+        '/org/freedesktop/login1',
+        null,
+        Gio.DBusSignalFlags.NONE,
+        (conn, sender, path, iface, signal, params) => {
+          // true = going to sleep; only the wake-up matters
+          if (!params.deepUnpack()[0]) rearm();
+        }
+      ),
+      bus.signal_subscribe(
+        'org.freedesktop.timedate1',
+        'org.freedesktop.DBus.Properties',
+        'PropertiesChanged',
+        '/org/freedesktop/timedate1',
+        null,
+        Gio.DBusSignalFlags.NONE,
+        rearm
+      ),
+    ];
+  }
+
+  _stopCalendarTicker() {
+    this._calendarTicker?.stop();
+    this._calendarTicker = null;
+    if (this._dateSubs) {
+      this._dateSubs.forEach((id) => Gio.DBus.system.signal_unsubscribe(id));
+      this._dateSubs = null;
+    }
+  }
+
+  // Stacks of the dock's group, macOS style: Recents (apps), Downloads, the
+  // `folder-stacks` setting and Screenshots (stackSources.js decides which).
+  // Each folder is watched so its newest files are already listed when the
+  // stack opens.
+  setupFolderStacks() {
+    this._teardownFolderStacks();
+
+    let ext = this.extension;
+    let downloads = ext.downloads_path;
+    if (!downloads || !GLib.file_test(downloads, GLib.FileTest.IS_DIR)) {
+      downloads = getDownloadsDir();
+    }
+    let specs = folderStackSpecs(
+      {
+        downloads: {
+          path: downloads,
+          view: ext.downloads_stack_view,
+          sort: ext.downloads_stack_sort,
+          display: ext.downloads_stack_display,
+          group: ext.downloads_stack_group,
+        },
+        entries: ext.folder_stacks,
+        screenshots: { enabled: ext.screenshots_icon, path: getScreenshotsDir() },
+      },
+      this._stackEnv()
     );
-    this._downloadsMonitor.connectObject(
+
+    // one unusable entry must not keep the whole dock from loading
+    let stacks = specs.filter((stack) => {
+      try {
+        stack.app = this.setupFolderIcon(
+          stack.key,
+          stack.title,
+          stack.icon,
+          stack.path
+        );
+        return true;
+      } catch (e) {
+        console.warn('d2da: folder stack', stack.path, 'skipped', e);
+        return false;
+      }
+    });
+    stacks.forEach((stack) => this._watchStack(stack));
+    this.folderStacks = stacks;
+    this.setupRecentsStack();
+  }
+
+  // what stackSources.folderStackSpecs needs of the file system
+  _stackEnv() {
+    return {
+      home: GLib.get_home_dir(),
+      isDir: (path) => GLib.file_test(path, GLib.FileTest.IS_DIR),
+      normalize: (path) => Gio.File.new_for_path(path).get_path(),
+      titleOf: (path) => this._folderDisplayName(Gio.File.new_for_path(path)),
+      iconOf: (path) => this._folderIconName(Gio.File.new_for_path(path)),
+      warn: (message) => console.warn(`d2da: ${message}`),
+    };
+  }
+
+  _watchStack(stack) {
+    stack.files = null;
+    stack.total = 0;
+    // Unwatched stacks still list their files on open via prepare().
+    stack.monitor = watchDir(
+      Gio.File.new_for_path(stack.path),
+      `folder stack ${stack.path}`
+    );
+    stack.monitor?.connectObject(
       'changed',
       (fileMonitor, file, otherFile, eventType) => {
         switch (eventType) {
@@ -191,12 +333,118 @@ export const Services = class {
           case Gio.FileMonitorEvent.MOVED_IN:
             return;
         }
-        this._debounceCheckDownloads();
+        this._debounceCheckFolderStack(stack);
       },
       this
     );
+    this._debounceCheckFolderStack(stack);
+  }
 
-    this._debounceCheckDownloads();
+  // The Recents stack: the recently closed apps as one stack, first in the
+  // group. Null when recent-apps-count is 0. Its list is rebuilt by
+  // refreshRecentsStack() whenever the apps, favorites or the list change.
+  setupRecentsStack() {
+    this._teardownRecentsStack();
+    let ext = this.extension;
+    if (!ext.recent_apps_count) return;
+    let stack = {
+      key: 'recents',
+      title: 'Recents',
+      isRecents: true,
+      view: STACK_VIEWS[ext.recents_stack_view] ?? 'automatic',
+      display: STACK_DISPLAYS[ext.recents_stack_display] ?? 'stack',
+      group: 'none',
+      files: [],
+      total: 0,
+    };
+    stack.app = this._createRecentsApp();
+    this.recentsStack = stack;
+    this.refreshRecentsStack();
+  }
+
+  _teardownRecentsStack() {
+    this.recentsStack?.pile?.destroy();
+    this.recentsStack = null;
+  }
+
+  // the Recents item is a plain launcher entry: clicking it opens the stack
+  _createRecentsApp() {
+    let icon =
+      this.extension.lookup_icon_from_names([
+        'folder-recent',
+        'document-open-recent',
+      ]) ?? 'folder';
+    let content = `[Desktop Entry]\nVersion=1.0\nTerminal=false\nType=Application\nName=Recents\nExec=true\nIcon=${icon}\nStartupWMClass=recents-hyperdock\n`;
+    return this._createAppInfoFromData(content);
+  }
+
+  // the icon file of a themed name, for the pile renderer
+  _iconFile(name) {
+    return (
+      this.extension.icon_theme?.lookup_icon(name, 128, 0)?.get_filename?.() ??
+      null
+    );
+  }
+
+  refreshRecentsStack() {
+    let stack = this.recentsStack;
+    if (!stack) return;
+    let items = recentItems(this.extension.recentDockApps(), (name) =>
+      this._iconFile(name)
+    );
+    // app state changes all the time; redraw only when the list did change
+    let signature = items.map((item) => `${item.id}:${item.name}`).join('\n');
+    if (signature === stack.signature) return;
+    stack.signature = signature;
+    stack.files = items;
+    stack.total = items.length;
+    this._renderPile(stack);
+    stack.fileListeners?.forEach((listener) => listener());
+  }
+
+  // "Display as Stack": draw the pile of the newest items off the main loop;
+  // its arrival notifies the stack's docks like a new file list does
+  _renderPile(stack) {
+    if (stack.display !== 'stack' || !stack.files?.length) return;
+    stack.pile ??= new StackPile(this.extension.path, () =>
+      stack.fileListeners?.forEach((listener) => listener())
+    );
+    stack.pile.render(pileLayers(stack.files, (item) => item.iconFile));
+  }
+
+  _teardownFolderStacks() {
+    (this.folderStacks || []).forEach((stack) => {
+      stack.monitor?.cancel();
+      stack.monitor?.disconnectObject(this);
+      stack.monitor = null;
+      this.extension._loTimer?.cancel(stack.checkSeq);
+      stack.checkSeq = null;
+      stack.pile?.destroy();
+    });
+    this.folderStacks = [];
+    this._teardownRecentsStack();
+  }
+
+  _folderDisplayName(dir) {
+    try {
+      return dir
+        .query_info('standard::display-name', Gio.FileQueryInfoFlags.NONE, null)
+        .get_display_name();
+    } catch {
+      return dir.get_basename();
+    }
+  }
+
+  // the theme's icon for the folder (folder-pictures, folder-documents, ...)
+  _folderIconName(dir) {
+    try {
+      let icon = dir
+        .query_info('standard::icon', Gio.FileQueryInfoFlags.NONE, null)
+        .get_icon();
+      return this.extension.lookup_icon_from_names(icon?.names ?? []) ?? 'folder';
+    } catch {
+      return 'folder';
+    }
   }
 
   _commitMounts() {
@@ -234,7 +482,7 @@ export const Services = class {
       try {
         s.update(elapsed);
       } catch (e) {
-        console.error(`d2da: service ${s.name} update`, e);
+        console.error('d2da: service', s.name, 'update', e);
       }
     });
   }
@@ -248,39 +496,46 @@ export const Services = class {
 
   setupTrashIcon() {
     let open_app = 'nautilus --select';
-    let content = `[Desktop Entry]\nVersion=1.0\nTerminal=false\nType=Application\nName=Trash\nExec=${open_app} trash:///\nIcon=user-trash\nStartupWMClass=trash-dash2dock-lite\nActions=trash;\n\n[Desktop Action trash]\nName=Empty Trash\nExec=gio trash --empty\nTerminal=false\n`;
+    let content = `[Desktop Entry]\nVersion=1.0\nTerminal=false\nType=Application\nName=Trash\nExec=${open_app} trash:///\nIcon=user-trash\nStartupWMClass=trash-hyperdock\nActions=trash;\n\n[Desktop Action trash]\nName=Empty Trash\nExec=gio trash --empty\nTerminal=false\n`;
     this.trashApp = this._createAppInfoFromData(content);
     return this.trashApp;
   }
 
-  setupFolderIcon(name, title, icon, path) {
-    let full_path = Gio.File.new_for_path(path).get_path();
-    let quoted_path = GLib.shell_quote(full_path);
-    let open_app = 'nautilus --select';
-
-    let content = `[Desktop Entry]\nVersion=1.0\nTerminal=false\nType=Application\nName=${title}\nExec=${open_app} ${quoted_path}\nIcon=${icon}\nStartupWMClass=${name}-dash2dock-lite\n`;
-    let appInfo = this._createAppInfoFromData(content);
-    if (!this.folderApps) {
-      this.folderApps = {};
+  // trash-style 1: the Trash item shows a glass bin with its real contents
+  updateTrashStyle() {
+    let glass = this.extension.trash_icon && this.extension.trash_style === 1;
+    if (!glass) {
+      this._glassTrash?.destroy();
+      this._glassTrash = null;
+      return;
     }
-    this.folderApps[name] = appInfo;
-    return appInfo;
+    if (!this._glassTrash) {
+      this._glassTrash = new GlassTrash(this.extension.path, () =>
+        this.extension.animate({ refresh: true })
+      );
+      this._glassTrash.render();
+    }
   }
 
-  setupFolderIcons() {
-    this.setupTrashIcon();
-    this.setupFolderIcon(
-      'downloads',
-      'Downloads',
-      'folder-downloads',
-      getDownloadsDir()
-    );
-    this.setupFolderIcon(
-      'documents',
-      'Documents',
-      'folder-documents',
-      getDocumentsDir()
-    );
+  // trashing a folder of files fires one event per file: draw once after
+  _debounceGlassTrash() {
+    if (!this._glassTrash || !this.extension._loTimer) return;
+    if (!this._glassTrashSeq) {
+      this._glassTrashSeq = this.extension._loTimer.runDebounced(
+        () => this._glassTrash?.render(),
+        DEBOUNCE_CHECK_TIMEOUT,
+        'debounceGlassTrash'
+      );
+    } else {
+      this.extension._loTimer.runDebounced(this._glassTrashSeq);
+    }
+  }
+
+  // the stack's dock item; activating it opens the folder itself
+  setupFolderIcon(name, title, icon, path) {
+    let exec = `nautilus ${this._execArg(Gio.File.new_for_path(path).get_path())}`;
+    let content = `[Desktop Entry]\nVersion=1.0\nTerminal=false\nType=Application\nName=${this._escapeDesktopValue(title)}\nExec=${exec}\nIcon=${this._escapeDesktopValue(icon)}\nStartupWMClass=${this._toSafeFileName(name)}-hyperdock\n`;
+    return this._createAppInfoFromData(content);
   }
 
   _toSafeFileName(name) {
@@ -297,7 +552,7 @@ export const Services = class {
     let appname = this._getMountAppName(mount);
     let location = mount.get_default_location();
     let fullpath = location?.get_path() || location?.get_uri() || '';
-    let quoted_path = GLib.shell_quote(fullpath);
+    let quoted_path = this._execArg(fullpath);
     let icon = 'drive-harddisk-solidstate';
     if (mount.get_icon() && mount.get_icon().names) {
       icon =
@@ -321,70 +576,89 @@ export const Services = class {
     return appInfo;
   }
 
-  checkNotifications() {
-    if (this._disableNotifications > 4) return;
+  // Badge counts follow the message tray through signals: a source added or
+  // removed, and each source's GObject `count` property. Polling (the old 5 s
+  // ping) left badges stale for seconds and woke the CPU for nothing.
+  _watchNotifications() {
+    let tray = Main.messageTray;
+    tray.connectObject(
+      'source-added',
+      (t, source) => {
+        this._watchNotificationSource(source);
+        this.checkNotifications();
+      },
+      'source-removed',
+      () => this.checkNotifications(),
+      this
+    );
+    tray.getSources().forEach((s) => this._watchNotificationSource(s));
+  }
 
-    let sources = Main.messageTray.getSources();
-    this._appNotices = this._appNotices || {};
+  _watchNotificationSource(source) {
+    source.connectObject(
+      'notify::count',
+      () => this.checkNotifications(),
+      'notification-added',
+      () => this.checkNotifications(),
+      'notification-removed',
+      () => this.checkNotifications(),
+      this
+    );
+  }
 
-    Object.keys(this._appNotices).forEach((k) => {
-      this._appNotices[k].previous = this._appNotices[k].count;
-      this._appNotices[k].count = 0;
+  _unwatchNotifications() {
+    Main.messageTray.disconnectObject(this);
+    Main.messageTray
+      .getSources()
+      .forEach((s) => s.disconnectObject(this));
+  }
+
+  // `launcher-api` toggles the Unity LauncherEntry listener at runtime.
+  setupLauncherEntries() {
+    this._launcherEntries?.destroy();
+    this._launcherEntries = null;
+    if (!this.extension.launcher_api) return;
+    this._launcherEntries = new LauncherEntries((appId, entry, previous) => {
+      if (!!entry?.urgent != !!previous?.urgent) {
+        let app = Shell.AppSystem.get_default().lookup_app(appId);
+        // attention bounce lives with the urgent-window feature, if loaded
+        if (app) this.extension.onAppAttention?.(app, !!entry?.urgent);
+      }
+      this.extension.animate({ refresh: true });
     });
+  }
 
+  // Launcher state for an app id, or null when the API is off/unused.
+  launcherEntry(appId) {
+    return this._launcherEntries?.entries[appId] ?? null;
+  }
+
+  checkNotifications() {
     let app_map = {
       'org.gnome.Evolution-alarm-notify.desktop': 'org.gnome.Calendar.desktop',
     };
 
-    sources.forEach((source) => {
-      let appId = null;
-      if (source.app) {
-        appId = source.app.get_id();
-      }
-      if (!appId && source._app) {
-        appId = source._app.get_id();
-      }
-      if (!appId) {
-        appId = source._appId;
-      }
-      if (!appId) {
-        appId = '?';
-      }
-
-      // remap
+    // One app can own several sources (its fdo notifications plus the Shell's
+    // window-attention source); their counts add up, as on the macOS badge.
+    let notices = {};
+    Main.messageTray.getSources().forEach((source) => {
+      let appId =
+        source.app?.get_id() || source._app?.get_id() || source._appId || '?';
       appId = app_map[appId] || appId;
-
-      if (!this._appNotices[appId]) {
-        this._appNotices[appId] = {
-          count: 0,
-          previous: 0,
-          urgency: 0,
-          source: source,
-        };
-      }
-      this._appNotices[appId].count = source.count;
-      this._appNotices[`${appId}`] = this._appNotices[appId];
-      if (!appId.endsWith('desktop')) {
-        this._appNotices[`${appId}.desktop`] = this._appNotices[appId];
-      }
+      let count = source.count || 0;
+      if (count <= 0) return;
+      if (!appId.endsWith('.desktop')) appId = `${appId}.desktop`;
+      notices[appId] = notices[appId] || { count: 0 };
+      notices[appId].count += count;
     });
 
-    let hasUpdates = false;
-    Object.keys(this._appNotices).forEach((k) => {
-      if (this._appNotices[k].previous != this._appNotices[k].count) {
-        hasUpdates = true;
-      }
-    });
+    let old = this._appNotices || {};
+    let changed =
+      Object.keys(old).length != Object.keys(notices).length ||
+      Object.keys(notices).some((k) => old[k]?.count != notices[k].count);
+    this._appNotices = notices;
 
-    let update = {};
-    Object.keys(this._appNotices).forEach((k) => {
-      if (this._appNotices[k].count > 0) {
-        update[k] = this._appNotices[k];
-      }
-    });
-    this._appNotices = update;
-
-    if (hasUpdates) {
+    if (changed) {
       this.extension.animate({ refresh: true });
     }
   }
@@ -401,24 +675,10 @@ export const Services = class {
       );
       let info;
       while ((info = iter.next_file(this._cancellable ?? null)) !== null) {
-        let child = iter.get_child(info);
-        try {
-          child.delete(this._cancellable ?? null);
-        } catch (e) {
-          if (
-            this._cancellable?.is_cancelled() ||
-            (e?.matches && e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED))
-          ) {
-            break;
-          }
-          console.error('d2da: services emptyTrash child delete', e);
-        }
+        if (!this._deleteTrashChild(iter.get_child(info))) break;
       }
     } catch (e) {
-      if (
-        !this._cancellable?.is_cancelled() &&
-        !(e?.matches && e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED))
-      ) {
+      if (!this._isCancelError(e)) {
         console.error('d2da: services emptyTrash', e);
       }
     } finally {
@@ -431,6 +691,20 @@ export const Services = class {
 
     this.checkTrash();
     this.extension?.animate?.({ refresh: true });
+  }
+
+  // Deletes one trashed item; false when the delete was cancelled, which
+  // ends the emptying loop. Other failures are logged and skipped.
+  _deleteTrashChild(child) {
+    try {
+      child.delete(this._cancellable ?? null);
+    } catch (e) {
+      if (this._isCancelError(e)) {
+        return false;
+      }
+      console.error('d2da: services emptyTrash child delete', e);
+    }
+    return true;
   }
 
   checkTrash() {
@@ -446,6 +720,9 @@ export const Services = class {
       let prev = this.trashFull;
       this.trashFull = iter.next_file(this._cancellable ?? null) != null;
       if (prev != this.trashFull) {
+        // this also runs every 15s: a missed monitor event still redraws
+        // the glass bin, at least when it turns empty or full
+        this._debounceGlassTrash();
         this.extension.animate({ refresh: true });
       }
       return this.trashFull;
@@ -467,10 +744,18 @@ export const Services = class {
     }
   }
 
-  async checkRecentFilesInFolder(path) {
-    console.log(`checking ${path}`);
+  // the fan shows at most this many files (+ "More..."), as upstream
+  maxFanItems() {
     let maxs = [5, 8, 10, 12, 15, 20, 25];
-    let max_recent_items = maxs[this.extension.max_recent_items || 0];
+    return maxs[this.extension.max_recent_items || 0];
+  }
+
+  // Files of a stack folder in the stack's sort order: up to STACK_MAX_FILES
+  // for the Grid/List panels (the fan takes the first maxFanItems()) and the
+  // total count.
+  async checkRecentFilesInFolder(path, sort = 'date-modified') {
+    console.log(`checking ${path}`);
+    let max_recent_items = STACK_MAX_FILES;
     let downloadFiles = [];
     let downloadFilesLength = 0;
 
@@ -483,6 +768,9 @@ export const Services = class {
           Gio.FILE_ATTRIBUTE_STANDARD_NAME,
           Gio.FILE_ATTRIBUTE_STANDARD_ICON,
           Gio.FILE_ATTRIBUTE_TIME_MODIFIED,
+          Gio.FILE_ATTRIBUTE_TIME_CREATED,
+          Gio.FILE_ATTRIBUTE_STANDARD_SIZE,
+          Gio.FILE_ATTRIBUTE_STANDARD_IS_HIDDEN,
         ].join(','),
         Gio.FileQueryInfoFlags.NONE,
         this._cancellable ?? null
@@ -492,32 +780,15 @@ export const Services = class {
       while (
         (fileInfo = enumerator.next_file(this._cancellable ?? null)) !== null
       ) {
-        let fileName = fileInfo.get_name();
-        let fileModified = fileInfo.get_modification_time();
-
-        let icon = 'file';
-        if (fileInfo.get_icon() && fileInfo.get_icon().names) {
-          icon =
-            this.extension.lookup_icon_from_names(fileInfo.get_icon().names) ??
-            icon;
+        // hidden files stay out of the stack, as in Finder
+        if (fileInfo.get_is_hidden()) {
+          continue;
         }
-
-        downloadFiles.push({
-          index: 0,
-          name: fileName,
-          display: fileName,
-          icon: icon,
-          type: fileInfo.get_content_type(),
-          path: GLib.build_filenamev([path, fileName]),
-          date: fileModified ?? { tv_sec: 0 },
-          fileInfo: fileInfo,
-        });
+        downloadFiles.push(this._stackFileEntry(path, fileInfo));
       }
 
       downloadFilesLength = downloadFiles.length;
-      downloadFiles.sort((a, b) => {
-        return a.date.tv_sec > b.date.tv_sec ? -1 : 1;
-      });
+      downloadFiles.sort(STACK_COMPARE[sort] ?? STACK_COMPARE['date-modified']);
 
       let index = 0;
       downloadFiles.forEach((f) => {
@@ -527,13 +798,9 @@ export const Services = class {
       downloadFiles.splice(max_recent_items);
       return [downloadFiles, downloadFilesLength];
     } catch (e) {
-      if (
-        this._cancellable?.is_cancelled() ||
-        (e?.matches && e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED))
-      ) {
-        return [[], 0];
+      if (!this._isCancelError(e)) {
+        console.error('d2da: services checkRecentFilesInFolder', e);
       }
-      console.error('d2da: services checkRecentFilesInFolder', e);
       return [[], 0];
     } finally {
       try {
@@ -542,6 +809,44 @@ export const Services = class {
         // ignore close error
       }
     }
+  }
+
+  // true when the error is our own cancellation, which is not worth logging
+  _isCancelError(e) {
+    return !!(
+      this._cancellable?.is_cancelled() ||
+      (e?.matches && e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED))
+    );
+  }
+
+  // one stack file item built from its Gio.FileInfo
+  _stackFileEntry(path, fileInfo) {
+    let fileName = fileInfo.get_name();
+    let fileModified = fileInfo.get_modification_time();
+
+    let icon = 'file';
+    if (fileInfo.get_icon() && fileInfo.get_icon().names) {
+      icon =
+        this.extension.lookup_icon_from_names(fileInfo.get_icon().names) ??
+        icon;
+    }
+
+    return {
+      index: 0,
+      name: fileName,
+      display: fileName,
+      icon: icon,
+      type: fileInfo.get_content_type(),
+      path: GLib.build_filenamev([path, fileName]),
+      date: fileModified ?? { tv_sec: 0 },
+      // btime; GLib has no "date added", and moving a file in keeps its
+      // btime on the same filesystem, so creation stands in for it.
+      // Filesystems without btime fall back to the modification time.
+      created: fileInfo.has_attribute(Gio.FILE_ATTRIBUTE_TIME_CREATED)
+        ? fileInfo.get_attribute_uint64(Gio.FILE_ATTRIBUTE_TIME_CREATED)
+        : (fileModified?.tv_sec ?? 0),
+      fileInfo: fileInfo,
+    };
   }
 
   /*
@@ -704,12 +1009,18 @@ export const Services = class {
     }
   }
 
-  async checkDownloads() {
+  async checkFolderStack(stack) {
+    if (stack.isRecents) {
+      this.refreshRecentsStack();
+      return;
+    }
     try {
-      let path = this._downloadsDir?.get_path();
-      if (!path) return;
-      [this._downloadFiles, this._downloadFilesLength] =
-        await this.checkRecentFilesInFolder(path);
+      [stack.files, stack.total] = await this.checkRecentFilesInFolder(
+        stack.path,
+        stack.sort
+      );
+      this._renderPile(stack);
+      stack.fileListeners?.forEach((listener) => listener());
     } catch (err) {
       if (
         this._cancellable?.is_cancelled() ||
@@ -718,24 +1029,30 @@ export const Services = class {
       ) {
         return;
       }
-      console.error('d2da: services checkDownloads', err);
+      console.error('d2da: services checkFolderStack', err);
     }
   }
 
-  _debounceCheckDownloads() {
+  _debounceCheckFolderStack(stack) {
     if (this.extension._loTimer) {
-      if (!this._debounceDownloadsSeq) {
-        this._debounceDownloadsSeq = this.extension._loTimer.runDebounced(
+      if (!stack.checkSeq) {
+        stack.checkSeq = this.extension._loTimer.runDebounced(
           () => {
-            this.checkDownloads();
+            this.checkFolderStack(stack);
           },
           DEBOUNCE_CHECK_TIMEOUT,
-          'debounceCheckDownloads'
+          'debounceCheckFolderStack'
         );
       } else {
-        this.extension._loTimer.runDebounced(this._debounceDownloadsSeq);
+        this.extension._loTimer.runDebounced(stack.checkSeq);
       }
     }
+  }
+
+  refreshFolderStacks() {
+    (this.folderStacks || []).forEach((stack) => {
+      this._debounceCheckFolderStack(stack);
+    });
   }
 
   // keyed by root URI so two volumes with the same name get separate items;
@@ -747,7 +1064,7 @@ export const Services = class {
       uri,
       -1
     );
-    return `mount-${key}-dash2dock-lite.desktop`;
+    return `mount-${key}-hyperdock.desktop`;
   }
 
   _escapeDesktopValue(value) {
@@ -756,6 +1073,15 @@ export const Services = class {
       .replace(/\n/g, '\\n')
       .replace(/\r/g, '\\r')
       .replace(/\t/g, '\\t');
+  }
+
+  // A path as one Exec= argument: shell-quoted for GDesktopAppInfo's argv
+  // split, `%` doubled so it is not a field code, then escaped for the key
+  // file. A raw newline or backslash makes load_from_data() throw.
+  _execArg(path) {
+    return this._escapeDesktopValue(
+      GLib.shell_quote(path).replace(/%/g, '%%')
+    );
   }
 
   _getMountName(mount) {
@@ -801,11 +1127,26 @@ export const Services = class {
       return;
     }
     let icon = item._icon;
-    if (!icon || !icon.icon_name) {
+    if (!icon) {
       return;
     }
 
-    let { scaleFactor, iconSize, dock } = settings;
+    let { dock } = settings;
+
+    // the glass trash; runs every frame, so only field compares unless the
+    // picture or the St.Icon (recreated on icon theme changes) is new
+    if (item === dock._trashIcon && this._updateGlassTrash(item, icon)) {
+      return;
+    }
+
+    // the app-grid icon as a pile of apps
+    if (this.extension.appGridPile?.applyTo(item, icon, dock)) {
+      return;
+    }
+
+    if (!icon.icon_name) {
+      return;
+    }
 
     // todo move dots and badges here?
 
@@ -817,81 +1158,89 @@ export const Services = class {
       }
     }
 
-    // clock
-    if (icon.icon_name == 'org.gnome.clocks') {
-      if (this.extension.clock_icon) {
-        let clock = item._clock;
-        if (!clock) {
-          clock = new Clock(CANVAS_SIZE, dock.extension._widgetStyle);
-          dock._clock = clock;
-          item._clock = clock;
-          item._image = clock;
-          // renderArea may be destroyed first (shell shutdown); drop the refs
-          // so dock._cleanupIcon never touches a disposed clock
-          clock.connect('destroy', () => {
-            if (item._image === clock) item._image = null;
-            if (item._clock === clock) item._clock = null;
-            if (dock._clock === clock) dock._clock = null;
-          });
-          // item._appwell.first_child.add_child(clock);
-          dock.renderArea.add_child(clock);
-        }
-        if (clock) {
-          clock._icon = icon;
-          clock.width = item._renderer.width * item._renderer.scaleX;
-          clock.height = clock.width;
-          // let toScale = item._scale;
-          // clock.set_scale(toScale, toScale);
-          let canvasScale = clock.width / (clock._canvas.width + 2);
-          clock._canvas.set_scale(canvasScale, canvasScale);
-          clock.x = item._renderer.x;
-          clock.y = item._renderer.y;
-          clock.opacity = item._renderer.opacity;
-          clock.show();
-          item._renderer.opacity = clock.shouldHideIcon() ? 0 : 255;
-        }
-      } else {
-        let clock = item._clock;
-        item._icon.visible = true;
-        clock?.hide();
-      }
-    }
+    let appId = item._appwell?.app?.get_id();
 
-    // calender
-    if (icon.icon_name == 'org.gnome.Calendar') {
-      if (this.extension.calendar_icon) {
-        let calendar = item._calendar;
-        if (!calendar) {
-          calendar = new Calendar(CANVAS_SIZE, dock.extension._widgetStyle);
-          dock._calendar = calendar;
-          item._calendar = calendar;
-          item._image = calendar;
-          calendar.connect('destroy', () => {
-            if (item._image === calendar) item._image = null;
-            if (item._calendar === calendar) item._calendar = null;
-            if (dock._calendar === calendar) dock._calendar = null;
-          });
-          dock.renderArea.add_child(calendar);
-        }
-        if (calendar) {
-          calendar._icon = icon;
-          calendar.width = item._renderer.width * item._renderer.scaleX;
-          calendar.height = calendar.width;
-          // let toScale = item._scale;
-          // calendar.set_scale(toScale, toScale);
-          let canvasScale = calendar.width / (calendar._canvas.width + 2);
-          calendar._canvas.set_scale(canvasScale, canvasScale);
-          calendar.x = item._renderer.x;
-          calendar.y = item._renderer.y;
-          calendar.opacity = item._renderer.opacity;
-          calendar.show();
-          item._renderer.opacity = calendar.shouldHideIcon() ? 0 : 255;
-        }
-      } else {
-        let calendar = item._calendar;
-        item._icon.visible = true;
-        calendar?.hide();
+    this._updateLiveWidget(item, dock, icon, appId, 'clock', Clock);
+    this._updateLiveWidget(item, dock, icon, appId, 'calendar', Calendar);
+  }
+
+  // Draws the glass picture on the trash item; true when it handled the
+  // frame (the caller stops), false to fall through to the theme icon.
+  _updateGlassTrash(item, icon) {
+    let gicon = this._glassTrash?.gicon ?? null;
+    if (gicon) {
+      if (item._glassGicon !== gicon || item._glassIcon !== icon) {
+        icon.gicon = gicon;
+        item._glassGicon = gicon;
+        item._glassIcon = icon;
       }
+      return true;
     }
+    if (item._glassGicon) {
+      // style switched back: hand the item back to the theme icon below
+      item._glassGicon = null;
+      item._glassIcon = null;
+      icon.icon_name = 'user-trash';
+    }
+    return false;
+  }
+
+  // Clock and Calendar icons share one lifecycle: `name` picks the widget
+  // app (this._widgetApps[name]), the item/dock field (`_${name}`) and the
+  // enabling setting (`${name}_icon`).
+  _updateLiveWidget(item, dock, icon, appId, name, WidgetClass) {
+    let key = `_${name}`;
+    if (appId && appId === this._widgetApps?.[name]?.id) {
+      if (this.extension[`${name}_icon`]) {
+        this._showLiveWidget(item, dock, icon, key, WidgetClass);
+      } else {
+        let widget = item[key];
+        item._icon.visible = true;
+        widget?.hide();
+      }
+    } else if (item[key]) {
+      this._dropWidget(item, key);
+    }
+  }
+
+  // creates the widget on first use, then lays it over the item's renderer
+  _showLiveWidget(item, dock, icon, key, WidgetClass) {
+    let widget = item[key];
+    if (!widget) {
+      widget = this._createLiveWidget(item, dock, key, WidgetClass);
+    }
+    widget._icon = icon;
+    widget.width = item._renderer.width * item._renderer.scaleX;
+    widget.height = widget.width;
+    let canvasScale = widget.width / (widget._canvas.width + 2);
+    widget._canvas.set_scale(canvasScale, canvasScale);
+    widget.x = item._renderer.x;
+    widget.y = item._renderer.y;
+    widget.opacity = item._renderer.opacity;
+    widget.show();
+    item._renderer.opacity = widget.shouldHideIcon() ? 0 : 255;
+  }
+
+  _createLiveWidget(item, dock, key, WidgetClass) {
+    let widget = new WidgetClass(CANVAS_SIZE, dock.extension._widgetStyle);
+    dock[key] = widget;
+    item[key] = widget;
+    item._image = widget;
+    // renderArea may be destroyed first (shell shutdown); drop the refs
+    // so dock._cleanupIcon never touches a disposed widget
+    widget.connect('destroy', () => {
+      if (item._image === widget) item._image = null;
+      if (item[key] === widget) item[key] = null;
+      if (dock[key] === widget) dock[key] = null;
+    });
+    dock.renderArea.add_child(widget);
+    return widget;
+  }
+
+  // the item no longer shows the app its live widget was drawn over (another
+  // app was detected, e.g. Calendar got installed over a handler fallback)
+  _dropWidget(item, key) {
+    item[key].destroy();
+    item._icon.visible = true;
   }
 };

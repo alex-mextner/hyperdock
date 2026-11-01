@@ -2,6 +2,7 @@
 
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
+import Gettext from 'gettext';
 
 const pointer_wrapper = {
   get_position: () => {
@@ -103,6 +104,20 @@ export const getDownloadsDir = () => {
     GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_DOWNLOAD) ||
     GLib.build_filenamev([GLib.get_home_dir(), 'Downloads'])
   );
+};
+
+// The folder GNOME saves screenshots to: <Pictures>/<"Screenshots", as
+// gnome-shell translates it>; null until the first screenshot creates it.
+export const getScreenshotsDir = () => {
+  const pictures =
+    GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_PICTURES) ||
+    GLib.build_filenamev([GLib.get_home_dir(), 'Pictures']);
+  const names = ['Screenshots', Gettext.dgettext('gnome-shell', 'Screenshots')];
+  for (const name of names) {
+    const path = GLib.build_filenamev([pictures, name]);
+    if (GLib.file_test(path, GLib.FileTest.IS_DIR)) return path;
+  }
+  return null;
 };
 
 export const getDocumentsDir = () => {

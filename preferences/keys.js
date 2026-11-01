@@ -6,7 +6,7 @@
 
 import { PrefKeys } from './prefKeys.js';
 
-export const schemaId = 'org.gnome.shell.extensions.dash2dock-lite';
+export const schemaId = 'org.gnome.shell.extensions.hyperdock';
 
 export const SettingsKeys = (patch) => {
   let settingsKeys = new PrefKeys(patch);
@@ -53,11 +53,22 @@ export const SettingsKeys = (patch) => {
       key_maps: {},
       // test: { values: [0, 1] },
     },
-    'lamp-app-animation': {
+    'launch-bounce-anywhere': {
       default_value: false,
       widget_type: 'switch',
-      key_maps: {},
-      // test: { values: [0, 1] },
+    },
+    'urgent-bounce': {
+      default_value: false,
+      widget_type: 'switch',
+    },
+    'minimize-to-icon': {
+      default_value: false,
+      widget_type: 'switch',
+    },
+    'minimize-effect': {
+      default_value: 0,
+      widget_type: 'dropdown',
+      test: { values: [0, 1] },
     },
     'autohide-dash': {
       default_value: true,
@@ -76,6 +87,12 @@ export const SettingsKeys = (patch) => {
       widget_type: 'switch',
       key_maps: {},
       test: { pointer: 'slide-down' },
+    },
+    // milliseconds, 0..2000 (schema range); an AdwSpinRow in ui/general.ui
+    'reveal-delay-ms': {
+      default_value: 300,
+      widget_type: 'int',
+      test: { values: [0, 300, 1000] },
     },
     'autohide-speed': {
       default_value: 0.5,
@@ -160,6 +177,65 @@ export const SettingsKeys = (patch) => {
       default_value: false,
       widget_type: 'switch',
     },
+    'click-minimizes': {
+      default_value: true,
+      widget_type: 'switch',
+    },
+    'shift-click-action': {
+      default_value: 0,
+      widget_type: 'dropdown',
+      test: { values: [0, 1] },
+    },
+    // a count, 0..50 (schema range); an AdwSpinRow in ui/others.ui
+    'recent-apps-count': {
+      default_value: 20,
+      widget_type: 'int',
+      test: { values: [0, 20, 50] },
+    },
+    'menu-open-at-login': {
+      default_value: false,
+      widget_type: 'switch',
+    },
+    'keyboard-focus': {
+      default_value: false,
+      widget_type: 'switch',
+    },
+    'hotkeys-overlay': {
+      default_value: false,
+      widget_type: 'switch',
+    },
+    'drag-off-remove': {
+      default_value: false,
+      widget_type: 'switch',
+    },
+    'background-menu': {
+      default_value: false,
+      widget_type: 'switch',
+    },
+    'spring-loading': {
+      default_value: false,
+      widget_type: 'switch',
+    },
+    'toggle-autohide-shortcut': {
+      default_value: [],
+      widget_type: 'strv',
+    },
+    'click-action-spread': {
+      default_value: false,
+      widget_type: 'switch',
+    },
+    'show-all-windows-item': {
+      default_value: false,
+      widget_type: 'switch',
+    },
+    'isolate-workspaces': {
+      default_value: false,
+      widget_type: 'switch',
+    },
+    'minimized-window-tiles': {
+      default_value: false,
+      widget_type: 'switch',
+    },
     'apps-icon': {
       default_value: true,
       widget_type: 'switch',
@@ -168,9 +244,28 @@ export const SettingsKeys = (patch) => {
       default_value: false,
       widget_type: 'switch',
     },
+    'app-grid-pile': {
+      default_value: true,
+      widget_type: 'switch',
+    },
+    // counts, schema ranges 0..6 and 0..12; AdwSpinRows in ui/others.ui
+    'app-grid-pile-recent': {
+      default_value: 3,
+      widget_type: 'int',
+      test: { values: [0, 3, 6] },
+    },
+    'app-grid-pile-frequent': {
+      default_value: 6,
+      widget_type: 'int',
+      test: { values: [0, 6, 12] },
+    },
     'trash-icon': {
       default_value: false,
       widget_type: 'switch',
+    },
+    'trash-style': {
+      default_value: 0,
+      widget_type: 'dropdown',
     },
     'downloads-icon': {
       default_value: false,
@@ -179,6 +274,50 @@ export const SettingsKeys = (patch) => {
     'downloads-path': {
       default_value: '',
       widget_type: 'string',
+    },
+    'folder-stacks': {
+      default_value: [],
+      widget_type: 'json_array',
+    },
+    'downloads-stack-view': {
+      default_value: 0,
+      widget_type: 'dropdown',
+      options: ['fan', 'grid', 'list', 'automatic'],
+      test: { values: [0, 1, 2, 3] },
+    },
+    'downloads-stack-sort': {
+      default_value: 0,
+      widget_type: 'dropdown',
+      options: ['date-modified', 'name', 'date-added', 'date-created', 'kind'],
+      test: { values: [0, 1, 2, 3, 4] },
+    },
+    'downloads-stack-display': {
+      default_value: 1,
+      widget_type: 'dropdown',
+      options: ['folder', 'stack'],
+      test: { values: [0, 1] },
+    },
+    'downloads-stack-group': {
+      default_value: 1,
+      widget_type: 'dropdown',
+      options: ['none', 'date', 'kind'],
+      test: { values: [0, 1, 2] },
+    },
+    'screenshots-icon': {
+      default_value: true,
+      widget_type: 'switch',
+    },
+    'recents-stack-view': {
+      default_value: 3,
+      widget_type: 'dropdown',
+      options: ['fan', 'grid', 'list', 'automatic'],
+      test: { values: [0, 1, 2, 3] },
+    },
+    'recents-stack-display': {
+      default_value: 1,
+      widget_type: 'dropdown',
+      options: ['plain', 'stack'],
+      test: { values: [0, 1] },
     },
     'downloads-icon-rotate-labels': {
       default_value: false,
@@ -201,6 +340,10 @@ export const SettingsKeys = (patch) => {
       default_value: false,
       widget_type: 'switch',
     },
+    'file-drops': {
+      default_value: false,
+      widget_type: 'switch',
+    },
     'clock-icon': {
       default_value: false,
       widget_type: 'switch',
@@ -212,10 +355,6 @@ export const SettingsKeys = (patch) => {
     'calendar-icon': {
       default_value: false,
       widget_type: 'switch',
-    },
-    'calendar-style': {
-      default_value: 0,
-      widget_type: 'dropdown',
     },
     'peek-hidden-icons': {
       default_value: false,
@@ -298,6 +437,10 @@ export const SettingsKeys = (patch) => {
       widget_type: 'color',
       themed: true,
     },
+    'adaptive-contrast': {
+      default_value: false,
+      widget_type: 'switch',
+    },
     'icon-border-radius': {
       default_value: 0,
       widget_type: 'scale',
@@ -367,8 +510,20 @@ export const SettingsKeys = (patch) => {
     'notification-badge-style': {
       default_value: 0,
       widget_type: 'dropdown',
-      options: ['default', 'dot', 'dash', 'square', 'triangle', 'diamond'],
-      test: { values: [0, 1, 2, 3, 4, 5] },
+      options: [
+        'default',
+        'dot',
+        'dash',
+        'square',
+        'triangle',
+        'diamond',
+        'count',
+      ],
+      test: { values: [0, 1, 2, 3, 4, 5, 6] },
+    },
+    'launcher-api': {
+      default_value: false,
+      widget_type: 'switch',
     },
     'notification-badge-color': {
       default_value: [1, 1, 1, 1],
@@ -460,6 +615,27 @@ export const SettingsKeys = (patch) => {
       default_value: false,
       widget_type: 'switch',
       themed: true,
+    },
+    'glass-material': {
+      default_value: false,
+      widget_type: 'switch',
+    },
+    'glass-backdrop': {
+      default_value: 1,
+      widget_type: 'dropdown',
+      test: { values: [0, 1] },
+    },
+    'glass-blur': {
+      default_value: 10,
+      widget_type: 'scale',
+    },
+    'glass-refraction': {
+      default_value: 24,
+      widget_type: 'scale',
+    },
+    'glass-rim': {
+      default_value: 1,
+      widget_type: 'scale',
     },
     'multi-monitor-filter': {
       default_value: 0,

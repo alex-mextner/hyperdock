@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Calculator
+Exec=true
+Icon=@ICONDIR@/calc.svg
+Terminal=false

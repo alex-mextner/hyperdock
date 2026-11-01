@@ -1,9 +1,9 @@
 {
-  "name": "dash2dock-lite",
-  "version": "1.0.39",
+  "name": "hyperdock",
+  "version": "1.4.0",
   "main": "index.js",
   "type": "module",
-  "repository": "git@github.com:icedman/dash2dock-lite",
+  "repository": "git@github.com:alex-mextner/hyperdock",
   "author": "icedman <m4rvin2005@gmail.com>",
   "license": "GPLv3",
   "scripts": {
@@ -11,6 +11,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
-    "eslint": "^9.39.5"
+    "eslint": "^9.39.5",
+    "oxlint": "1.89.0"
   }
 }

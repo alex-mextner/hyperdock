@@ -24,6 +24,7 @@ import * as Fav from 'resource:///org/gnome/shell/ui/appFavorites.js';
 
 import St from 'gi://St';
 import Shell from 'gi://Shell';
+import Meta from 'gi://Meta';
 import Graphene from 'gi://Graphene';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
@@ -33,11 +34,19 @@ import { Timer } from './timer.js';
 import { Style } from './style.js';
 import { Dock } from './dock.js';
 import { Services } from './services.js';
+import { AppGridPile } from './appGridPile.js';
 import { Integrations } from './integrations.js';
 import { WindowTracker } from './windowTracker.js';
+import { WindowFeedback } from './windowFeedback.js';
 import { runTests } from './diagnostics.js';
-import { probe, applySmokeSettings } from './probe.js';
+import { probe, applySmokeSettings, smokeShots } from './probe.js';
 import * as Compat from './compat.js';
+import { decidePin } from './widgetApps.js';
+import { WallpaperTone, markColors } from './contrast.js';
+import { HotkeysOverlay } from './hotkeysOverlay.js';
+import { AppSpread, WindowEvents } from './windowsView.js';
+import { FileDrops } from './fileDrops.js';
+import { isLaunchable, pickRecents, rememberRecent } from './recentApps.js';
 
 import {
   Extension,
@@ -52,13 +61,25 @@ const ANIM_ICON_QUALITY = 2.0;
 const ANIM_INTERVAL = 15;
 const ANIM_INTERVAL_PAD = 15;
 
+// MRU length kept in dconf; above the largest recent-apps-count (50) so
+// pinned or running apps in the list still leave enough candidates
+const RECENT_APPS_KEPT = 100;
+
 const ACTION_ORDER = [
-  'compiz',
+  'pin_widget_apps',
   'bms',
   'blurred_bg',
-  'downloads_setup',
+  'glass',
+  'folder_stacks_setup',
   'mounts',
+  'trash_style',
+  'launcher_api',
+  'file_drops',
   'recents_debounce',
+  'recent_apps',
+  'app_grid_pile',
+  'keyboard_focus',
+  'hotkeys_overlay',
   'animation_fps',
   'autohide',
   'multi_monitor',
@@ -66,19 +87,26 @@ const ACTION_ORDER = [
   'shrink',
   'icon_resolution',
   'icon_spacing',
+  'contrast',
+  'contrast_colors',
   'widget_style',
   'debounced_style',
   'style',
   'icon_effect',
   'icon_effect_color',
+  'windows_view',
   'layout',
   'animate_refresh',
   'animate_preview',
   'animate',
+  'window_feedback',
+  'autohide_reveal',
 ];
 
 const REACTIONS = Object.freeze({
-  'lamp-app-animation': ['compiz'],
+  'minimize-to-icon': ['window_feedback'],
+  'urgent-bounce': ['window_feedback'],
+  'minimize-effect': ['window_feedback'],
   'animation-fps': ['animation_fps'],
   'debug-visual': ['animate'],
   'mounted-icon': ['mounts', 'animate_refresh'],
@@ -91,19 +119,37 @@ const REACTIONS = Object.freeze({
   'notification-badge-size': ['animate'],
   'notification-badge-color': ['animate'],
   'notification-badge-style': ['animate'],
+  'launcher-api': ['launcher_api', 'animate'],
   'running-indicator-size': ['animate'],
   'running-indicator-color': ['animate'],
   'running-indicator-style': ['animate'],
   'clock-style': ['widget_style'],
-  'calendar-style': ['widget_style'],
   'max-recent-items': ['recents_debounce'],
-  'apps-icon': ['layout', 'animate_refresh'],
+  'apps-icon': ['app_grid_pile', 'layout', 'animate_refresh'],
+  'app-grid-pile': ['app_grid_pile'],
+  'app-grid-pile-recent': ['app_grid_pile'],
+  'app-grid-pile-frequent': ['app_grid_pile'],
   'apps-icon-front': ['layout', 'animate_refresh'],
-  'calendar-icon': ['layout', 'animate_refresh'],
-  'clock-icon': ['layout', 'animate_refresh'],
-  'favorites-only': ['layout', 'animate_refresh'],
-  'downloads-path': ['downloads_setup'],
-  'dock-location': ['layout', 'recreate_docks', 'animate_preview'],
+  'calendar-icon': ['pin_widget_apps', 'layout', 'animate_refresh'],
+  'clock-icon': ['pin_widget_apps', 'layout', 'animate_refresh'],
+  'favorites-only': ['app_grid_pile', 'layout', 'animate_refresh'],
+  'keyboard-focus': ['keyboard_focus'],
+  'hotkeys-overlay': ['hotkeys_overlay'],
+  'recent-apps-count': ['recent_apps', 'layout', 'animate_refresh'],
+  'recents-stack-view': ['recent_apps', 'layout', 'animate_refresh'],
+  'recents-stack-display': ['recent_apps', 'layout', 'animate_refresh'],
+  'screenshots-icon': ['folder_stacks_setup', 'layout', 'animate_refresh'],
+  'downloads-stack-group': ['folder_stacks_setup', 'layout', 'animate_refresh'],
+  'downloads-path': ['folder_stacks_setup', 'layout', 'animate_refresh'],
+  'folder-stacks': ['folder_stacks_setup', 'layout', 'animate_refresh'],
+  'downloads-stack-view': ['folder_stacks_setup', 'layout', 'animate_refresh'],
+  'downloads-stack-sort': ['folder_stacks_setup', 'layout', 'animate_refresh'],
+  'downloads-stack-display': [
+    'folder_stacks_setup',
+    'layout',
+    'animate_refresh',
+  ],
+  'dock-location': ['contrast', 'layout', 'recreate_docks', 'animate_preview'],
   'icon-resolution': [
     'icon_resolution',
     'style',
@@ -128,7 +174,7 @@ const REACTIONS = Object.freeze({
   'icon-border-thickness': ['style', 'layout', 'animate'],
   'icon-border-radius': ['style', 'layout', 'animate'],
   'icon-background-color': ['style', 'layout', 'animate'],
-  'separator-color': ['style', 'layout', 'animate'],
+  'separator-color': ['contrast_colors', 'style', 'layout', 'animate'],
   'border-color': ['style', 'layout', 'animate'],
   'border-thickness': ['style', 'layout', 'animate'],
   'customize-topbar': ['style', 'layout', 'animate'],
@@ -144,16 +190,33 @@ const REACTIONS = Object.freeze({
   'label-background-color': ['style', 'layout', 'animate'],
   'label-foreground-color': ['style', 'layout', 'animate'],
   'panel-mode': ['style', 'layout', 'animate'],
-  'background-color': ['bms', 'blurred_bg', 'style', 'layout', 'animate'],
+  'background-color': [
+    'bms',
+    'blurred_bg',
+    'contrast_colors',
+    'style',
+    'layout',
+    'animate',
+  ],
+  'adaptive-contrast': ['contrast', 'contrast_colors', 'style', 'animate'],
   'blur-resolution': ['bms', 'blurred_bg', 'style', 'layout', 'animate'],
   'blur-background': ['bms', 'blurred_bg', 'style', 'layout', 'animate'],
-  'pressure-sense': [],
+  'glass-material': ['bms', 'glass', 'style', 'layout', 'animate'],
+  'glass-backdrop': ['glass', 'animate'],
+  'glass-blur': ['glass', 'animate'],
+  'glass-refraction': ['glass', 'animate'],
+  'glass-rim': ['glass', 'animate'],
+  'pressure-sense': ['autohide_reveal'],
   'downloads-icon': ['layout', 'animate_refresh'],
   'documents-icon': ['layout', 'animate_refresh'],
-  'trash-icon': ['layout', 'animate_refresh'],
+  'trash-icon': ['trash_style', 'layout', 'animate_refresh'],
+  'trash-style': ['trash_style', 'animate_refresh'],
+  'isolate-workspaces': ['app_grid_pile', 'windows_view', 'layout', 'animate_refresh'],
+  'minimized-window-tiles': ['windows_view', 'layout', 'animate_refresh'],
+  'file-drops': ['file_drops'],
 });
 
-export default class Dash2DockLiteExt extends Extension {
+export default class HyperdockExt extends Extension {
   createDock() {
     let d = new Dock({ extension: this });
     d.extension = this;
@@ -170,26 +233,7 @@ export default class Dash2DockLiteExt extends Extension {
     this.docks = this.docks ?? [];
 
     if (this._config.docks) {
-      let count = this._config['docks'].length;
-      if (count != this.docks.length) {
-        this.destroyDocks();
-      }
-      this._config.docks.forEach((dc) => {
-        let index = -1;
-        let dc_monitor = dc['monitor'] ?? {};
-        for (let i = 0; i < Main.layoutManager.monitors.length; i++) {
-          let m = Main.layoutManager.monitors[i];
-          if (m.x == dc_monitor['x'] && m.y == dc_monitor['y']) {
-            index = m.index;
-            break;
-          }
-        }
-        if (index != -1) {
-          let d = this.createDock();
-          d._monitorIndex = index;
-          d._config = dc;
-        }
-      });
+      this._createConfiguredDocks();
       return;
     }
 
@@ -222,6 +266,33 @@ export default class Dash2DockLiteExt extends Extension {
         d._monitorIndex = i;
       }
     }
+  }
+
+  // One dock per entry of config.docks, placed on the monitor whose x/y
+  // matches the entry; entries naming an absent monitor are skipped.
+  _createConfiguredDocks() {
+    let count = this._config['docks'].length;
+    if (count != this.docks.length) {
+      this.destroyDocks();
+    }
+    this._config.docks.forEach((dc) => {
+      let index = this._findMonitorIndex(dc['monitor'] ?? {});
+      if (index != -1) {
+        let d = this.createDock();
+        d._monitorIndex = index;
+        d._config = dc;
+      }
+    });
+  }
+
+  _findMonitorIndex(dc_monitor) {
+    for (let i = 0; i < Main.layoutManager.monitors.length; i++) {
+      let m = Main.layoutManager.monitors[i];
+      if (m.x == dc_monitor['x'] && m.y == dc_monitor['y']) {
+        return m.index;
+      }
+    }
+    return -1;
   }
 
   destroyDocks() {
@@ -311,12 +382,23 @@ export default class Dash2DockLiteExt extends Extension {
     // service
     this.services = new Services();
     this.services.extension = this;
-    this.services.setupFolderIcons();
+    this.services.setupTrashIcon();
 
     // todo follow animator and autohider protocol
     this.services.enable();
+    // a switch already on at start is not a toggle: never pins
+    this._widgetSwitches = {
+      calendar: !!this.calendar_icon,
+      clock: !!this.clock_icon,
+    };
     this._lastServicesUpdate = 0;
     this._onCheckServices();
+
+    this.appGridPile = new AppGridPile(this);
+    this.appGridPile.setup();
+
+    this.windowFeedback = new WindowFeedback(this);
+    this.windowFeedback.enable();
 
     // after integrations/services exist: the settings switch uses them
     applySmokeSettings(this._settings);
@@ -324,14 +406,24 @@ export default class Dash2DockLiteExt extends Extension {
     this._updateAnimationFPS();
     this._updateShrink();
     this._updateIconResolution();
+    this._updateContrast();
+    this._updateContrastColors();
     this._updateStyle();
     this._updateBlurredBackground();
+    this._updateFileDrops();
 
     this._addEvents();
+    this._updateHotkeysOverlay();
+    this.appSpread = new AppSpread();
+    this._windowEvents = new WindowEvents(
+      () => this._onWindowsChanged(),
+      (window) => this._onMinimizedChanged(window)
+    );
+    this._updateWindowsView();
     this._queryDisplay();
     // this.startUp();
 
-    console.log('dash2dock-lite enabled');
+    console.log('hyperdock enabled');
 
     // to allow dynamic imports
     this._loTimer.runOnce(() => {
@@ -353,14 +445,25 @@ export default class Dash2DockLiteExt extends Extension {
     // null later
 
     this._removeEvents();
+    this._hotkeysOverlay?.destroy();
+    this._hotkeysOverlay = null;
     this._disableSettings();
 
     this._updateShrink(true);
     this._updateLayout(true);
     this._updateAutohide(true);
     this._unloadConfig();
+    this._updateContrast(true);
+    this._updateFileDrops(true);
 
     this._showMainOverviewDash(true);
+
+    this.windowFeedback?.disable();
+    this.windowFeedback = null;
+    this._windowEvents?.destroy();
+    this._windowEvents = null;
+    this.appSpread?.destroy();
+    this.appSpread = null;
 
     this.destroyDocks();
     this.docks = [];
@@ -370,6 +473,9 @@ export default class Dash2DockLiteExt extends Extension {
 
     this.integrations.disable();
     this.integrations = null;
+
+    this.appGridPile?.destroy();
+    this.appGridPile = null;
 
     this.services.disable();
     this.services = null;
@@ -391,9 +497,15 @@ export default class Dash2DockLiteExt extends Extension {
     delete this.icon_theme;
     this.icon_theme = null;
 
-    console.log('dash2dock-lite disabled');
+    console.log('hyperdock disabled');
 
     probe(this, 'after-disable', probeTimers);
+  }
+
+  // App-level attention request (e.g. Unity LauncherEntry `urgent`): true
+  // bounces the app's icon until it is focused, false withdraws the request.
+  onAppAttention(app, urgent) {
+    this.windowFeedback?.setAppAttention(app, urgent);
   }
 
   animate(settings = {}) {
@@ -433,6 +545,7 @@ export default class Dash2DockLiteExt extends Extension {
     }, 10);
 
     probe(this, 'after-enable');
+    smokeShots(this);
   }
 
   _autohiders() {
@@ -482,28 +595,7 @@ export default class Dash2DockLiteExt extends Extension {
         console.error('d2da: loadConfig', err);
       }
 
-      // precompute
-      {
-        let icon_size = this._config['icon-size'] ?? 0;
-        if (typeof icon_size == 'string') {
-          icon_size = parseInt(icon_size);
-        }
-        this._config.icon_size = icon_size > 0 ? icon_size : null;
-      }
-
-      {
-        let speed_up = this._config['speed-up'] ?? 1;
-        if (typeof speed_up == 'string') {
-          speed_up = parseFloat(speed_up);
-        }
-        if (speed_up > 4) {
-          speed_up = 4;
-        }
-        if (speed_up < 0.5) {
-          speed_up = 0.5;
-        }
-        this._config.speed_up = speed_up;
-      }
+      this._precomputeConfig();
     }
 
     let fn_icons = Gio.File.new_for_path(
@@ -516,34 +608,12 @@ export default class Dash2DockLiteExt extends Extension {
         if (json['icons']) {
           this.icon_map = json['icons'];
           this.icon_map_cache = {};
-          Object.keys(this.icon_map).forEach((k) => {
-            let path = this.icon_map[k];
-            if (path.toLowerCase().endsWith('.svg')) {
-              let file = Gio.File.new_for_path(
-                GLib.build_filenamev([configDir, path])
-              );
-              if (file.query_exists(null)) {
-                console.log(`loading icon ${file.get_path()}`);
-                this.icon_map_cache[k] = new Gio.FileIcon({ file: file });
-              }
-            }
-          });
+          this._cacheSvgIcons(this.icon_map, this.icon_map_cache, configDir);
         }
         if (json['apps']) {
           this.app_map = json['apps'];
           this.app_map_cache = {};
-          Object.keys(this.app_map).forEach((k) => {
-            let path = this.app_map[k];
-            if (path.toLowerCase().endsWith('.svg')) {
-              let file = Gio.File.new_for_path(
-                GLib.build_filenamev([configDir, path])
-              );
-              if (file.query_exists(null)) {
-                console.log(`loading icon ${file.get_path()}`);
-                this.app_map_cache[k] = new Gio.FileIcon({ file: file });
-              }
-            }
-          });
+          this._cacheSvgIcons(this.app_map, this.app_map_cache, configDir);
         }
       } catch (err) {
         console.error('d2da: loadConfig', err);
@@ -558,6 +628,49 @@ export default class Dash2DockLiteExt extends Extension {
       let theme = ctx.get_theme();
       theme.load_stylesheet(fn_style);
     }
+  }
+
+  // Normalises the user-facing config values into the numeric fields the
+  // docks read (string values are accepted from hand-edited JSON).
+  _precomputeConfig() {
+    {
+      let icon_size = this._config['icon-size'] ?? 0;
+      if (typeof icon_size == 'string') {
+        icon_size = parseInt(icon_size);
+      }
+      this._config.icon_size = icon_size > 0 ? icon_size : null;
+    }
+
+    {
+      let speed_up = this._config['speed-up'] ?? 1;
+      if (typeof speed_up == 'string') {
+        speed_up = parseFloat(speed_up);
+      }
+      if (speed_up > 4) {
+        speed_up = 4;
+      }
+      if (speed_up < 0.5) {
+        speed_up = 0.5;
+      }
+      this._config.speed_up = speed_up;
+    }
+  }
+
+  // Fills `cache` with a FileIcon for every existing .svg path in `map`;
+  // shared by the icon and app override maps from icons.json.
+  _cacheSvgIcons(map, cache, configDir) {
+    Object.keys(map).forEach((k) => {
+      let path = map[k];
+      if (path.toLowerCase().endsWith('.svg')) {
+        let file = Gio.File.new_for_path(
+          GLib.build_filenamev([configDir, path])
+        );
+        if (file.query_exists(null)) {
+          console.log(`loading icon ${file.get_path()}`);
+          cache[k] = new Gio.FileIcon({ file: file });
+        }
+      }
+    });
   }
 
   _unloadConfig() {
@@ -617,7 +730,7 @@ export default class Dash2DockLiteExt extends Extension {
             try {
               command();
             } catch (err) {
-              console.error(`d2da: msg-to-ext ${value}`, err);
+              console.error('d2da: msg-to-ext', value, err);
             }
           } else {
             console.warn('d2da: unknown command', value);
@@ -677,18 +790,32 @@ export default class Dash2DockLiteExt extends Extension {
     this._pendingReactions = new Set();
 
     const handlers = {
-      compiz: () => this.integrations?.hookCompiz(),
+      pin_widget_apps: () => this._pinWidgetApps(),
       bms: () => this.integrations?.hookBms(),
       blurred_bg: () => this._updateBlurredBackground(),
-      downloads_setup: () => this.services?.setupDownloads(),
+      glass: () => {
+        this.docks?.forEach((dock) => {
+          dock._updateGlass();
+        });
+      },
+      folder_stacks_setup: () => this.services?.setupFolderStacks(),
+      trash_style: () => this.services?.updateTrashStyle(),
+      launcher_api: () => this.services?.setupLauncherEntries(),
+      file_drops: () => this._updateFileDrops(),
       mounts: () => {
         this.services?.checkMounts();
         this.services?._commitMounts();
       },
       recents_debounce: () => {
-        this.services?._debounceCheckDownloads();
+        this.services?.refreshFolderStacks();
         this.services?._debounceCheckRecents();
       },
+      recent_apps: () => this.services?.setupRecentsStack(),
+      app_grid_pile: () => this.appGridPile?.setup(),
+      keyboard_focus: () => {
+        this.docks?.forEach((dock) => dock._updateKeyboardFocus());
+      },
+      hotkeys_overlay: () => this._updateHotkeysOverlay(),
       animation_fps: () => this._updateAnimationFPS(),
       autohide: () => this._updateAutohide(),
       multi_monitor: () => this._updateMultiMonitorPreference(),
@@ -696,6 +823,8 @@ export default class Dash2DockLiteExt extends Extension {
       shrink: () => this._updateShrink(),
       icon_resolution: () => this._updateIconResolution(),
       icon_spacing: () => this._updateIconSpacing(),
+      contrast: () => this._updateContrast(),
+      contrast_colors: () => this._updateContrastColors(),
       widget_style: () => this._updateWidgetStyle(),
       debounced_style: () => this._debouncedUpdateStyle(),
       style: () => this._updateStyle(),
@@ -709,12 +838,16 @@ export default class Dash2DockLiteExt extends Extension {
           dock._updateIconEffectColor(this.icon_effect_color);
         });
       },
+      windows_view: () => this._updateWindowsView(),
       layout: () => this._updateLayout(),
       animate_refresh: () => this.animate({ refresh: true }),
       animate_preview: () => {
         if (this.animate_icons) this.animate({ preview: true });
       },
       animate: () => this.animate(),
+      window_feedback: () => this.windowFeedback?.update(),
+      autohide_reveal: () =>
+        this._autohiders().forEach((autohider) => autohider?.recheckReveal()),
     };
 
     for (const action of ACTION_ORDER) {
@@ -722,7 +855,7 @@ export default class Dash2DockLiteExt extends Extension {
         try {
           handlers[action]?.();
         } catch (err) {
-          console.error(`d2da: reaction ${action}`, err);
+          console.error('d2da: reaction', action, err);
         }
       }
     }
@@ -747,15 +880,30 @@ export default class Dash2DockLiteExt extends Extension {
   }
 
   _addEvents() {
+    // macOS ⌥⌘D. Mutter re-reads the accelerators from the key itself, so the
+    // default [] binds nothing and a later change needs no re-registration.
+    Main.wm.addKeybinding(
+      'toggle-autohide-shortcut',
+      this._settings,
+      Meta.KeyBindingFlags.NONE,
+      Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW,
+      () => {
+        this._settings.set_boolean('autohide-dash', !this.autohide_dash);
+      }
+    );
+
     this._appSystem = Shell.AppSystem.get_default();
 
     this._appSystem.connectObject(
       'installed-changed',
       () => {
+        this.services?.refreshWidgetApps();
+        this.appGridPile?.onInstalledChanged();
         this._onAppsChanged();
       },
       'app-state-changed',
-      () => {
+      (appSystem, app) => {
+        this._rememberClosedApp(app);
         this._onAppsChanged();
       },
       this
@@ -779,15 +927,11 @@ export default class Dash2DockLiteExt extends Extension {
     Main.extensionManager.connectObject(
       'extensions-loaded',
       (manager) => {
-        this.integrations.hookCompiz(true);
         this.integrations.hookBms(true);
       },
       'extension-state-changed',
       (manager, extension) => {
         switch (extension.uuid) {
-          case 'compiz-alike-magic-lamp-effect@hermes83.github.com':
-            this.integrations.hookCompiz(extension.state == 1);
-            break;
           case 'blur-my-shell@aunetx':
             this.integrations.hookBms(extension.state == 1);
             if (extension.state == 1) {
@@ -822,15 +966,6 @@ export default class Dash2DockLiteExt extends Extension {
       () => {
         this._onMonitorsChanged();
         this._updateMultiMonitorPreference();
-      },
-      this
-    );
-
-    Main.messageTray.connectObject(
-      'queue-changed',
-      (count) => {
-        this.services.checkNotifications();
-        this.animate();
       },
       this
     );
@@ -881,13 +1016,68 @@ export default class Dash2DockLiteExt extends Extension {
     );
   }
 
+  _updateHotkeysOverlay() {
+    if (this.hotkeys_overlay && !this._hotkeysOverlay) {
+      this._hotkeysOverlay = new HotkeysOverlay(this);
+    } else if (!this.hotkeys_overlay && this._hotkeysOverlay) {
+      this._hotkeysOverlay.destroy();
+      this._hotkeysOverlay = null;
+    }
+  }
+
+  // macOS "Show suggested and recent apps in Dock": an app that quits goes
+  // to the front of a persisted MRU list. Only tracked while the feature is
+  // on, so the default never writes dconf.
+  _rememberClosedApp(app) {
+    if (!this.recent_apps_count || !this._settings) return;
+    if (app?.state !== Shell.AppState.STOPPED) return;
+    let id = app.get_id();
+    if (!id || id.startsWith('window:')) return;
+    let ids = rememberRecent(
+      this._settings.get_strv('recent-apps'),
+      id,
+      RECENT_APPS_KEPT
+    );
+    this._settings.set_strv('recent-apps', ids);
+  }
+
+  // Apps the Recents stack lists: recently closed, not pinned,
+  // not running (a running app already has its own icon), launchable
+  recentDockApps() {
+    let count = this.recent_apps_count;
+    if (!count || !this._settings || !this._appSystem) return [];
+    let favorites = Fav.getAppFavorites().getFavoriteMap();
+    return pickRecents(this._settings.get_strv('recent-apps'), {
+      count,
+      isFavorite: (id) => id in favorites,
+      resolve: (id) => {
+        let app = this._appSystem.lookup_app(id);
+        let info = app?.get_app_info();
+        if (!info || app.state !== Shell.AppState.STOPPED) return null;
+        return isLaunchable({
+          noDisplay: info.get_nodisplay(),
+          categories: info.get_categories(),
+        })
+          ? app
+          : null;
+      },
+    });
+  }
+
+  // "Clear Recents" in the Recents stack's menu
+  clearRecentApps() {
+    if (!this._settings) return;
+    this._settings.set_strv('recent-apps', []);
+    this.services?.refreshRecentsStack();
+  }
+
   _removeEvents() {
+    Main.wm.removeKeybinding('toggle-autohide-shortcut');
     this._appSystem.disconnectObject(this);
     this._appSystem = null;
     this._appFavorites.disconnectObject(this);
     this._appFavorites = null;
     Main.extensionManager.disconnectObject(this);
-    Main.messageTray.disconnectObject(this);
     Main.overview.disconnectObject(this);
     Main.layoutManager.disconnectObject(this);
     Main.sessionMode.disconnectObject(this);
@@ -913,6 +1103,7 @@ export default class Dash2DockLiteExt extends Extension {
       this._lastServicesUpdate = 0;
     }
     this.icon_theme = St.IconTheme.new();
+    this.appGridPile?.setup();
     this._updateStyle();
     this.recreateAllDocks();
   }
@@ -939,11 +1130,65 @@ export default class Dash2DockLiteExt extends Extension {
     });
   }
 
+  // Turning Calendar/Clock on pins the app they draw over when it is not a
+  // favorite yet; turning them off never unpins (see decidePin).
+  _pinWidgetApps() {
+    const favorites = Compat.getFavoriteAppIds(this._appFavorites);
+    const now = {
+      calendar: !!this.calendar_icon,
+      clock: !!this.clock_icon,
+    };
+    Object.keys(now).forEach((kind) => {
+      const appId = this.services?.widgetApp(kind)?.id ?? null;
+      const wasEnabled = !!this._widgetSwitches?.[kind];
+      if (decidePin({ enabled: now[kind], wasEnabled, appId, favorites }) === 'pin') {
+        this._appFavorites.addFavorite(appId);
+      }
+    });
+    this._widgetSwitches = now;
+  }
+
   _onAppsChanged() {
+    // a closed, launched or (un)pinned app changes what Recents lists
+    this.services?.refreshRecentsStack();
+    // pinned or running apps leave the pile's recent ones; usage moves its order
+    this.appGridPile?.scheduleRefresh();
     let listeners = [...this.listeners];
     listeners.forEach((l) => {
       if (l._onAppsChanged) l._onAppsChanged();
     });
+  }
+
+  // isolate-workspaces / minimized-window-tiles need window and workspace
+  // signals; connect them only while one of the two is on
+  _updateWindowsView() {
+    if (this.isolate_workspaces || this.minimized_window_tiles) {
+      this._windowEvents?.enable();
+    } else {
+      this._windowEvents?.disable();
+    }
+    this.docks?.forEach((dock) => {
+      // isolation toggled: the Dash re-reads its (filtered) running apps
+      dock.dash?._queueRedisplay();
+      dock._onWindowsChanged();
+    });
+  }
+
+  _onWindowsChanged() {
+    this.docks?.forEach((dock) => dock._onWindowsChanged());
+  }
+
+  // Runs before Mutter starts the minimize/unminimize effect: the docks lay
+  // out the window's tile, then the window is aimed at it. A new tile moves
+  // the tiles before it, and windows minimized together (click-minimizes)
+  // only start their effects after the last one: re-aim every tiled window.
+  _onMinimizedChanged(window) {
+    let windows = new Set([window]);
+    this.docks?.forEach((dock) => {
+      dock._onMinimizedChanged(window);
+      dock._minimizedTiles?.forEach((tile, w) => windows.add(w));
+    });
+    windows.forEach((w) => this.windowFeedback?.aimWindow(w));
   }
 
   _onMonitorsChanged() {
@@ -1093,6 +1338,60 @@ export default class Dash2DockLiteExt extends Extension {
     }
   }
 
+  // Owns the file-drop helper process while file-drops is on.
+  _updateFileDrops(disable) {
+    if (disable || !this.file_drops) {
+      this._fileDrops?.disable();
+      this._fileDrops = null;
+      return;
+    }
+    if (!this._fileDrops) {
+      // an optional extra: a failure here must not take the dock down
+      try {
+        this._fileDrops = new FileDrops(this);
+        this._fileDrops.enable();
+      } catch (err) {
+        console.error('d2da: file-drops', err);
+        this._fileDrops?.disable();
+        this._fileDrops = null;
+      }
+    }
+  }
+
+  // Owns the wallpaper sampler while adaptive-contrast is on. The sampler
+  // reports asynchronously; colours are derived and restyled from that
+  // callback, never from the animation loop.
+  _updateContrast(disable) {
+    if (disable || !this.adaptive_contrast) {
+      this._wallpaperTone?.destroy();
+      this._wallpaperTone = null;
+      this.contrast_colors = null;
+      return;
+    }
+    if (!this._wallpaperTone) {
+      try {
+        this._wallpaperTone = new WallpaperTone(() => {
+          this._queueReactions(['contrast_colors', 'style', 'animate']);
+        });
+      } catch (err) {
+        console.error('d2da: adaptive contrast', err);
+        return;
+      }
+    }
+    const positions = ['bottom', 'left', 'right', 'top'];
+    this._wallpaperTone.setPosition(positions[this.dock_location] ?? 'bottom');
+  }
+
+  // null keeps the fixed separator/indicator colours (off, or the wallpaper
+  // could not be read). One object per wallpaper/setting change: the dot
+  // renderer compares colours by reference, so it repaints only then.
+  _updateContrastColors() {
+    let rgb = this.adaptive_contrast ? this._wallpaperTone?.rgb : null;
+    this.contrast_colors = rgb
+      ? markColors(rgb, this.background_color, this.separator_color?.[3])
+      : null;
+  }
+
   _updateStyle(disable) {
     let styles = [];
 
@@ -1118,7 +1417,10 @@ export default class Dash2DockLiteExt extends Extension {
       ss.push(`border-radius: ${r}px;`);
       this.computed_border_radius = r;
       let rgba = this._style.rgba(this.background_color);
-      ss.push(`background: rgba(${rgba});`);
+      // with glass on, the glass platter draws the tint and the rims
+      ss.push(
+        this.glass_material ? 'background: transparent;' : `background: rgba(${rgba});`
+      );
       styles.push(`#d2daBackground { ${ss.join(' ')}}`);
     }
 
@@ -1173,50 +1475,66 @@ export default class Dash2DockLiteExt extends Extension {
 
     // topbar
     if (this.customize_topbar) {
-      let ss = [];
-      // border
-      if (this.topbar_border_thickness) {
-        let rgba = this._style.rgba(this.topbar_border_color);
-        ss.push(
-          `border: ${this.topbar_border_thickness}px solid rgba(${rgba}); border-top: 0px; border-left: 0px; border-right: 0px;`
-        );
-      }
-
-      // background
-      // ss.push('background: transparent;');
-      {
-        let rgba = this._style.rgba(this.topbar_background_color);
-        ss.push(`background: rgba(${rgba});`);
-      }
-      styles.push(`#panelBox #panel {${ss.join(' ')}}`);
-      ss = [];
-
-      // foreground
-      if (this.topbar_foreground_color && this.topbar_foreground_color[3] > 0) {
-        let rgba = this._style.rgba(this.topbar_foreground_color);
-        styles.push(
-          `.panel-status-indicator-icon, #panelBox #panel * { color: rgba(${rgba}) }`
-        );
-      } else {
-        let rgba = this._style.rgba([0, 0, 0, 1]);
-        let bg = this.topbar_background_color;
-        if (0.3 * bg[0] + 0.59 * bg[1] + 0.11 * bg[2] < 0.5) {
-          rgba = this._style.rgba([1, 1, 1, 1]);
-        }
-        styles.push(
-          `.panel-status-indicator-icon, #panelBox #panel * { color: rgba(${rgba}) }`
-        );
-      }
+      this._pushTopbarStyles(styles);
     }
 
     if (this.separator_thickness) {
-      let rgba = this._style.rgba(this.separator_color);
+      let rgba = this._style.rgba(
+        this.contrast_colors?.separator ?? this.separator_color
+      );
       styles.push(`.dash-separator { background-color: rgba(${rgba}); }`);
+    }
+
+    // Dock icons are drawn by renderer St.Icons in the render area, which
+    // inherit the stage's dark default foreground; symbolic ones (the Apps
+    // grid) take that colour. Only overridden when adaptive, so the theme's
+    // look is untouched otherwise.
+    if (this.contrast_colors) {
+      let rgba = this._style.rgba(this.contrast_colors.icon);
+      styles.push(`#DockRenderArea #d2daIcon { color: rgba(${rgba}); }`);
     }
 
     this._style.build('custom-d2dl', styles);
 
     this._updateBorderStyle();
+  }
+
+  // Appends the top bar overrides (border, background, readable foreground).
+  _pushTopbarStyles(styles) {
+    let ss = [];
+    // border
+    if (this.topbar_border_thickness) {
+      let rgba = this._style.rgba(this.topbar_border_color);
+      ss.push(
+        `border: ${this.topbar_border_thickness}px solid rgba(${rgba}); border-top: 0px; border-left: 0px; border-right: 0px;`
+      );
+    }
+
+    // background
+    // ss.push('background: transparent;');
+    {
+      let rgba = this._style.rgba(this.topbar_background_color);
+      ss.push(`background: rgba(${rgba});`);
+    }
+    styles.push(`#panelBox #panel {${ss.join(' ')}}`);
+    ss = [];
+
+    // foreground
+    if (this.topbar_foreground_color && this.topbar_foreground_color[3] > 0) {
+      let rgba = this._style.rgba(this.topbar_foreground_color);
+      styles.push(
+        `.panel-status-indicator-icon, #panelBox #panel * { color: rgba(${rgba}) }`
+      );
+    } else {
+      let rgba = this._style.rgba([0, 0, 0, 1]);
+      let bg = this.topbar_background_color;
+      if (0.3 * bg[0] + 0.59 * bg[1] + 0.11 * bg[2] < 0.5) {
+        rgba = this._style.rgba([1, 1, 1, 1]);
+      }
+      styles.push(
+        `.panel-status-indicator-icon, #panelBox #panel * { color: rgba(${rgba}) }`
+      );
+    }
   }
 
   _updateBorderStyle() {
@@ -1227,7 +1545,7 @@ export default class Dash2DockLiteExt extends Extension {
     // no longer necessary<<<?
 
     let border_style = '';
-    if (this.border_thickness /* && !this._disable_borders */) {
+    if (this.border_thickness && !this.glass_material) {
       let rgba = this._style.rgba(this.border_color);
       border_style = `border: ${this.border_thickness}px solid rgba(${rgba}) !important;`;
     }

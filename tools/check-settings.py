@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Settings consistency checker for Dash2Dock Animated (stdlib only).
+"""Settings consistency checker for Hyperdock (stdlib only).
 
 Cross-checks the four places a setting lives:
 
@@ -67,6 +67,7 @@ SETTING_WIDGET_CLASSES = {
     'GtkSwitch': 'switch',
     'GtkScale': 'scale',
     'GtkDropDown': 'dropdown',
+    'AdwSpinRow': 'int',
     'GtkColorButton': 'color',
 }
 # keys.js widget_types that are expected to have a ui widget.
@@ -247,6 +248,7 @@ def runtime_reads(paths, names):
 def parse_schema(paths):
     keys = {}
     for path in paths:
+        # nosemgrep: python.lang.security.use-defused-xml-parse.use-defused-xml-parse (repo's own schema)
         for key in ET.parse(path).getroot().iter('key'):
             keys[key.get('name')] = rel(path)
     return keys
@@ -264,6 +266,7 @@ def parse_ui(paths):
         r'<property\s+name="adjustment"\s*>\s*([^<\s]+)\s*</property>')
     for path in paths:
         text = read(path)
+        # nosemgrep: python.lang.security.use-defused-xml-parse.use-defused-xml-parse (repo's own ui files)
         for obj in ET.parse(path).getroot().iter('object'):
             cls, oid = obj.get('class'), obj.get('id')
             if oid and cls in SETTING_WIDGET_CLASSES:

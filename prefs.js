@@ -7,10 +7,12 @@ import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Adw from 'gi://Adw';
 
-const GETTEXT_DOMAIN = 'dash2dock-light';
+const GETTEXT_DOMAIN = 'hyperdock';
 
 import { schemaId, SettingsKeys } from './preferences/keys.js';
 import { MonitorsConfig } from './monitors.js';
+import { describeWidgetApp } from './widgetApps.js';
+import { detectWidgetApp } from './widgetAppsGio.js';
 
 import {
   ExtensionPreferences,
@@ -73,19 +75,19 @@ export default class Preferences extends ExtensionPreferences {
     const actions = [
       {
         name: 'open-bug-report',
-        link: 'https://github.com/icedman/dash2dock-lite/issues',
+        link: 'https://github.com/alex-mextner/hyperdock/issues',
       },
       {
         name: 'open-readme',
-        link: 'https://github.com/icedman/dash2dock-lite',
-      },
-      {
-        name: 'open-buy-coffee',
-        link: 'https://www.buymeacoffee.com/icedman',
+        link: 'https://github.com/alex-mextner/hyperdock',
       },
       {
         name: 'open-license',
-        link: 'https://github.com/icedman/dash2dock-lite/blob/master/LICENSE',
+        link: 'https://github.com/alex-mextner/hyperdock/blob/mac-tahoe/LICENSE',
+      },
+      {
+        name: 'open-upstream',
+        link: 'https://github.com/icedman/dash2dock-lite',
       },
     ];
 
@@ -129,6 +131,58 @@ export default class Preferences extends ExtensionPreferences {
     return null;
   }
 
+  _readFolderStacks(settings) {
+    try {
+      let stacks = JSON.parse(settings.get_string('folder-stacks'));
+      return Array.isArray(stacks) ? stacks : [];
+    } catch {
+      return [];
+    }
+  }
+
+  // one row per extra folder stack, each with a remove button
+  updateFolderStacks(builder, settings) {
+    let expander = builder.get_object('folder-stacks-row');
+    (this._folderStackRows || []).forEach((r) => expander.remove(r));
+    this._folderStackRows = this._readFolderStacks(settings).map(
+      (entry, idx, all) => {
+        let path = typeof entry === 'string' ? entry : entry?.path ?? '';
+        let row = new Adw.ActionRow({ title: GLib.markup_escape_text(path, -1) });
+        let remove = new Gtk.Button({
+          icon_name: 'list-remove-symbolic',
+          valign: Gtk.Align.CENTER,
+          tooltip_text: 'Remove',
+        });
+        remove.add_css_class('flat');
+        remove.connect('clicked', () => {
+          let next = all.filter((_, i) => i !== idx);
+          settings.set_string('folder-stacks', JSON.stringify(next));
+        });
+        row.add_suffix(remove);
+        expander.add_row(row);
+        return row;
+      }
+    );
+  }
+
+  addFolderStack(window, settings) {
+    new Gtk.FileDialog().select_folder(window, null, (dialog, task) => {
+      let folder = null;
+      try {
+        folder = dialog.select_folder_finish(task);
+      } catch (err) {
+        console.log(`d2da: select folder: ${err.message}`);
+      }
+      let path = folder?.get_path();
+      if (!path) {
+        return;
+      }
+      let stacks = this._readFolderStacks(settings);
+      stacks.push(path);
+      settings.set_string('folder-stacks', JSON.stringify(stacks));
+    });
+  }
+
   addButtonEvents(window, builder, settings) {
     // builder.get_object('static-animation').connect('clicked', () => {
     //   builder.get_object('animation-spread').set_value(0);
@@ -147,6 +201,16 @@ export default class Preferences extends ExtensionPreferences {
           });
       });
       this.updateFolders(window, builder, settings);
+    }
+
+    if (builder.get_object('folder-stacks-row')) {
+      builder.get_object('folder-stacks-add').connect('clicked', () => {
+        this.addFolderStack(window, settings);
+      });
+      settings.connect('changed::folder-stacks', () => {
+        this.updateFolderStacks(builder, settings);
+      });
+      this.updateFolderStacks(builder, settings);
     }
 
     if (builder.get_object('reset')) {
@@ -183,13 +247,6 @@ export default class Preferences extends ExtensionPreferences {
 
     // this.dump(window, 0);
 
-    // add buymeacoffee QR
-    if (builder.get_object('qr')) {
-      builder
-        .get_object('qr')
-        .set_from_file(`${UIFolderPath}/images/qr_icedman.png`);
-    }
-
     let settings = this.getSettings(schemaId);
     settings.set_string('msg-to-ext', '');
 
@@ -215,6 +272,21 @@ export default class Preferences extends ExtensionPreferences {
     this.addButtonEvents(window, builder, settings);
     this.addMenu(window, builder);
 
+    // Calendar/Clock rows name the app they draw over, or turn insensitive
+    // with an install hint when there is none
+    ['calendar', 'clock'].forEach((kind) => {
+      let row = builder.get_object(`${kind}-icon-row`);
+      if (!row) return;
+      let state = describeWidgetApp(
+        kind,
+        detectWidgetApp(kind),
+        _,
+        settings.get_boolean(`${kind}-icon`)
+      );
+      row.set_sensitive(state.sensitive);
+      row.set_subtitle(state.subtitle);
+    });
+
     if (builder.get_object('peek-hidden-icons-row')) {
       builder.get_object('peek-hidden-icons-row').visible = false;
     }
@@ -222,9 +294,6 @@ export default class Preferences extends ExtensionPreferences {
     let toggle_experimental = () => {
       let exp = settings.get_boolean('experimental-features');
       // builder.get_object('dock-location-row').visible = exp;
-      // if (builder.get_object('lamp-app-animation-row')) {
-      //   builder.get_object('lamp-app-animation-row').visible = exp;
-      // }
       if (builder.get_object('self-test-row')) {
         builder.get_object('self-test-row').visible = exp;
       }
@@ -282,7 +351,7 @@ export default class Preferences extends ExtensionPreferences {
             themed_presets.push(json);
           }
         } catch (err) {
-          console.error(`d2da: invalid preset ${fn.get_path()}`, err);
+          console.error('d2da: invalid preset', fn.get_path(), err);
         }
       }
       f = iter.next_file(null);
@@ -375,6 +444,7 @@ export default class Preferences extends ExtensionPreferences {
             this._settings.set_boolean(k, v);
             break;
           case 'dropdown':
+          case 'int':
             this._settings.set_int(k, v);
             break;
           case 'scale':
@@ -382,7 +452,7 @@ export default class Preferences extends ExtensionPreferences {
             break;
         }
       } catch (err) {
-        console.error(`d2da: preset ${p['meta']['title']} key ${k}`, err);
+        console.error('d2da: preset', p['meta']['title'], 'key', k, err);
       }
     });
 

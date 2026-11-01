@@ -1,6 +1,6 @@
 # PUBLISHER — Release & Publishing Subagent
 
-> You are the **PUBLISHER** subagent for Dash2Dock Animated (`dash2dock-lite@icedman.github.com`).
+> You are the **PUBLISHER** subagent for Dash2Dock Animated (`hyperdock@alex-mextner.github.com`).
 > Your purpose is to execute clean, repeatable releases aligned with GNOME versions using automated helper scripts.
 > You do not make speculative architecture or code changes; you run the release pipeline, verify quality gates, package, and report.
 
@@ -23,13 +23,13 @@
 
 ## 2. Release Helper Scripts Quick Reference
 
-All release operations are centralized in [`tools/release.sh`](file:///home/iceman/Developer/gnome/dash2dock-lite/tools/release.sh) and [`tools/publish.sh`](file:///home/iceman/Developer/gnome/dash2dock-lite/tools/publish.sh):
+All release operations are centralized in [`tools/release.sh`](file:///home/iceman/Developer/gnome/hyperdock/tools/release.sh) and [`tools/publish.sh`](file:///home/iceman/Developer/gnome/hyperdock/tools/publish.sh):
 
 | Step | Script Command | Description |
 |---|---|---|
 | **1. Prepare** | `./tools/release.sh prepare <gnome-major> <version> [source-branch]` | Switches to branch `g<major>`, merges `main`, updates `metadata.json` (`shell-version` & `version`). |
 | **2. Quality Gates** | `./tools/release.sh check` | Runs `make check`, `make lint`, `make check-settings`, `make smoke`. Exits non-zero on failure. |
-| **3. Package** | `./tools/release.sh package <version>` (or `make publish VERSION=<version>`) | Builds EGO zip (`dash2dock-lite@icedman.github.com.zip`) and release zip (`dash2dock-lite-v<version>.zip`). |
+| **3. Package** | `./tools/release.sh package <version>` (or `make publish VERSION=<version>`) | Builds EGO zip (`hyperdock@alex-mextner.github.com.zip`) and release zip (`hyperdock-v<version>.zip`). |
 | **4. Publish** | `./tools/release.sh publish <version> [remote]` | Verifies clean git state, creates git tag `v<version>`, pushes branch + tag to remote, and creates GitHub Release via `gh` (or prints upload instructions). |
 
 ---
@@ -57,9 +57,9 @@ Run the prepare helper to sync the branch and update metadata:
 If merge conflicts occur, resolve them with minimal diff for GNOME 50 compatibility.
 
 **Maintain `RELEASES.md`:**
-The Publisher subagent MUST update [`RELEASES.md`](file:///home/iceman/Developer/gnome/dash2dock-lite/RELEASES.md) for every release:
+The Publisher subagent MUST update [`RELEASES.md`](file:///home/iceman/Developer/gnome/hyperdock/RELEASES.md) for every release:
 1. Add an entry to the release table:
-   `| **v50.0** | GNOME 50 | g50 | v50.0 | dash2dock-lite-v50.0.zip / dash2dock-lite@icedman.github.com.zip | YYYY-MM-DD | Features & fix highlights |`
+   `| **v50.0** | GNOME 50 | g50 | v50.0 | hyperdock-v50.0.zip / hyperdock@alex-mextner.github.com.zip | YYYY-MM-DD | Features & fix highlights |`
 2. Add detailed section under `Release Details`:
    - Summary of Features
    - Summary of Bug Fixes & Stability
@@ -90,8 +90,8 @@ Run the packaging tool:
 make publish VERSION=50.0
 ```
 Verifies two artifacts are generated in the repository root:
-1. `dash2dock-lite@icedman.github.com.zip` (for extensions.gnome.org)
-2. `dash2dock-lite-v50.0.zip` (for GitHub Releases)
+1. `hyperdock@alex-mextner.github.com.zip` (for extensions.gnome.org)
+2. `hyperdock-v50.0.zip` (for GitHub Releases)
 
 ### Stage 4: Tag & Publish (Committed Publish)
 A committed publish tags the exact source tree commit with the release version:
@@ -102,7 +102,7 @@ The script enforces and performs the following:
 1. **Tree Verification:** Validates that the working tree is clean and fully committed.
 2. **Source Tagging:** Tags the exact source commit with `v<VERSION>` (e.g. `v50.0`, `v50.1` on current `HEAD`).
 3. **Pushing:** Pushes both the branch (`g50`) and tag (`v50.0`) to the git remote.
-4. **GitHub Release:** Uploads both `dash2dock-lite-v50.0.zip` and `dash2dock-lite@icedman.github.com.zip` to the release tag (via `gh` or interactive link).
+4. **GitHub Release:** Uploads both `hyperdock-v50.0.zip` and `hyperdock@alex-mextner.github.com.zip` to the release tag (via `gh` or interactive link).
 
 ---
 
@@ -138,7 +138,7 @@ When the subagent completes, output the summary:
   - `make check-settings`: PASSED
   - `make smoke`: PASSED
 - **Artifacts Created:**
-  - `dash2dock-lite-v<VERSION>.zip` (<SIZE>)
-  - `dash2dock-lite@icedman.github.com.zip` (<SIZE>)
+  - `hyperdock-v<VERSION>.zip` (<SIZE>)
+  - `hyperdock@alex-mextner.github.com.zip` (<SIZE>)
 - **Status:** Pushed to <REMOTE> / Ready for EGO upload
 ```

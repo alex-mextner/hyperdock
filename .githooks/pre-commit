@@ -1,0 +1,47 @@
+#!/bin/sh
+# pre-commit: lint what is staged, run the unit checks, then the machine-wide hooks.
+# Install with `make hooks`. A failing lint blocks the commit; fix it, do not bypass.
+set -u
+cd "$(git rev-parse --show-toplevel)" || exit 1
+
+staged() { git diff --cached --name-only --diff-filter=ACMR | grep -E "$1" || true; }
+
+# run_tool <binary> <uv package> [args...]: the PATH binary, else `uv tool run` (as tools/ci.sh).
+run_tool() {
+	bin=$1
+	pkg=$2
+	shift 2
+	if command -v "$bin" >/dev/null 2>&1; then "$bin" "$@"; else uv tool run --from "$pkg" "$bin" "$@"; fi
+}
+
+js=$(staged '\.js$')
+sh_files=$(staged '(\.sh$|^\.githooks/[a-z-]+$)')
+workflows=$(staged '^\.github/workflows/.*\.ya?ml$')
+
+if [ -n "$js" ]; then
+	[ -d node_modules ] || npm ci --no-audit --no-fund || exit 1
+	echo "pre-commit: eslint + oxlint on staged JS"
+	# shellcheck disable=SC2086  # one path per word; repo paths have no spaces
+	npx eslint --no-warn-ignored $js || exit 1
+	# shellcheck disable=SC2086
+	npx oxlint $js || exit 1
+	echo "pre-commit: unit checks"
+	out=$(tools/run-tests.sh 2>&1) || {
+		echo "$out"
+		exit 1
+	}
+fi
+
+if [ -n "$sh_files" ]; then
+	echo "pre-commit: shellcheck on staged shell scripts"
+	# shellcheck disable=SC2086
+	run_tool shellcheck shellcheck-py --severity=warning $sh_files || exit 1
+fi
+
+if [ -n "$workflows" ]; then
+	echo "pre-commit: actionlint on staged workflows"
+	# shellcheck disable=SC2086
+	run_tool actionlint actionlint-py $workflows || exit 1
+fi
+
+exec "$(dirname "$0")/chain-global" pre-commit "$@"

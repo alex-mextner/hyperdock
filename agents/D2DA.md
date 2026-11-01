@@ -6,7 +6,7 @@
 > **Roadmap** to pick work.
 >
 > - Line numbers are pinned to commit `f876684` (main). Re-verify with `grep -n` after edits.
-> - `build/` is a **generated copy** (Makefile `publish`/`g44`). Never edit or grep it — exclude it.
+> - `build/` is a **generated copy** (Makefile `publish`). Never edit or grep it — exclude it.
 > - Tags: **[verified]** = confirmed by reading code. **[inference]** = reasoned, not reproduced at runtime. **[verify]** = must check against the target GNOME Shell source.
 
 ---
@@ -15,9 +15,9 @@
 
 | | |
 |---|---|
-| Name / UUID | Dash2Dock Animated — `dash2dock-lite@icedman.github.com` |
+| Name / UUID | Dash2Dock Animated — `hyperdock@alex-mextner.github.com` |
 | Shell versions | 45, 46, 47, 48, 49, 50 (`metadata.json`), ESM modules, no `session-modes` (disabled on lock screen ⇒ full disable/enable every lock) |
-| Settings schema | `org.gnome.shell.extensions.dash2dock-lite` (97 keys) |
+| Settings schema | `org.gnome.shell.extensions.hyperdock` (97 keys) |
 | Size | ~9.6k LOC JS. Core: `dock.js` 1644, `extension.js` 1226, `animator.js` 1189, `services.js` 772 |
 | Install / run | `make install` → copy to `~/.local/share/gnome-shell/extensions/<uuid>`; `make test-shell` (nested `gnome-shell --devkit`; needs the `mutter-devkit` package for the viewer window, otherwise the shell runs headless) ; `make test-prefs` |
 | Release | `make publish` → `build/` → zip (**omits `themes/`** — bug T-4) |
@@ -278,7 +278,7 @@ Everything here can break on a Shell release. **Goal: route all of it through on
 ### 6.5 Dead code / duplication (safe deletions after a grep)
 - Files: `apps/overlay.js`, `apps/empty-trash.sh`, unused `apps/*.desktop` (except recents if kept), `effects/blur_effect.*`, `effects/color_effect.*`, `ui/legacy/`, `tests/generate_legacy.py`, `tools/transpile.py`, `tools/imports_*.js`, Makefile `g44*` targets + README section.
 - Functions: `utils.js` timers & `get_distance`; `timer.js` `pause/resume/toggle_pause/restart/runUntil/runningTime`, duplicate `runOnce`≡`runDebounced`; `vector.js` unused ops; `easing.js` ~200 lines; `extension.js` `_onKeyPressed`, `_getPreferredColorScheme` (+ empty `color-scheme` handler 450-456), `_updateBlurredBackground(){}`, `_updateShrink` dead branch; `autohide.js` `_onFocusWindow/_onFullScreen`; `services.js` `checkRecents*` & commented block 462-527; `style.js hex`.
-- Dead settings (UI visible, no effect): `experimental-features` (prefs-only since 03940ad: shows the self-test row), `topbar-blur-background`, `documents-icon`, `calendar-style`, `peek-hidden-icons`, `blur-resolution`, `disable-blur-at-overview`, `icon-border-color`, `icon-border-thickness`; schema-only: `debug`, `debug-log`, `monitor-count`, `msg-to-pref`, `theme`; schema + `keys.js` but never read: `animation-type`, `documents-path` [verified cff438d, check-settings].
+- Dead settings (UI visible, no effect): `experimental-features` (prefs-only since 03940ad: shows the self-test row), `topbar-blur-background`, `documents-icon`, `peek-hidden-icons`, `blur-resolution`, `disable-blur-at-overview`, `icon-border-color`, `icon-border-thickness`; schema-only: `debug`, `debug-log`, `monitor-count`, `msg-to-pref`, `theme`; schema + `keys.js` but never read: `animation-type`, `documents-path` [verified cff438d, check-settings].
 - `keys.js` defaults drift from schema in 15 keys — derive from `settings_schema.get_key(k).get_default_value()`.
 - Effects: 4 files ≈ 582 lines with ~10 unique lines ⇒ one `ColorShaderEffect` base.
 
@@ -361,7 +361,7 @@ Effort: S ≤ 2h, M ≈ ½-1 day, L ≥ 2 days. Order within a phase = recommend
 - Lock/unlock 5× and toggle extension 20× → R-0a counts stable.
 - Dock positions: bottom/left/right/top × autohide on/off × dodge on/off × fullscreen app × overview.
 - Multi-monitor: preference 0/1, hotplug, scale 1/2 (`make test-shell2`).
-- Prefs: open/close without changing anything ⇒ `dconf dump /org/gnome/shell/extensions/dash2dock-lite/` unchanged.
+- Prefs: open/close without changing anything ⇒ `dconf dump /org/gnome/shell/extensions/hyperdock/` unchanged.
 - `CHECKLIST.md` visual checks.
 
 ## 9. Agent workflow

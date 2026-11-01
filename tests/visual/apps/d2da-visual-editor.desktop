@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Text Editor
+Exec=true
+Icon=@ICONDIR@/editor.svg
+Terminal=false

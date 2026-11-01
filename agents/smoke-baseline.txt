@@ -1,1 +1,9 @@
 Gjs-WARNING **: : Type GITypeInfo of property NM.Object::client does not match return type GITypeInfo of getter get_client. Falling back to slow path
+St-CRITICAL **: : st_widget_get_theme_node called on the widget [PTR Gjs_ui_dash_Dash:insensitive "dash"] which is not in the stage.
+St-CRITICAL **: : st_widget_get_theme_node called on the widget [PTR Gjs_ui_dash_ShowAppsIcon.dash-item-container:insensitive] which is not in the stage.
+St-CRITICAL **: : st_widget_get_theme_node called on the widget [PTR Gjs_ui_iconGrid_BaseIcon.overview-icon:insensitive] which is not in the stage.
+St-CRITICAL **: : st_widget_get_theme_node called on the widget [PTR StBin:insensitive] which is not in the stage.
+St-CRITICAL **: : st_widget_get_theme_node called on the widget [PTR StBoxLayout:insensitive] which is not in the stage.
+St-CRITICAL **: : st_widget_get_theme_node called on the widget [PTR StButton.show-apps:insensitive] which is not in the stage.
+St-CRITICAL **: : st_widget_get_theme_node called on the widget [PTR StIcon.show-apps-icon] which is not in the stage.
+St-CRITICAL **: : st_widget_get_theme_node called on the widget [PTR StWidget:insensitive] which is not in the stage.

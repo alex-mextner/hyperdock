@@ -23,6 +23,35 @@ import {
 } from 'resource:///org/gnome/shell/ui/dash.js';
 
 import { DockPosition } from './dock.js';
+import { indicatorBand, indicatorPlacement, visibleEdge } from './iconGeometry.js';
+import { TranslationFollower } from './overlayFollow.js';
+
+// gap between the running indicator and the dock edge, share of the icon size
+const INDICATOR_EDGE_MARGIN = 0.06;
+
+/**
+ * Cross-axis coordinate (renderArea space) of the dock's visible outer edge:
+ * the platter when it is drawn, else the dash (a lone icon draws no
+ * platter), clamped to the monitor at rest (see visibleEdge). The dash slide
+ * (autohide, edge distance) is kept so hidden docks take their dots along.
+ */
+function dockEdge(dock, renderOffset) {
+  let bg = dock._background;
+  let box = bg && bg.opacity > 0 && bg.width > 0 && bg.height > 0 ? bg : dock.dash;
+  let pos = box.get_transformed_position();
+  let mon = dock._monitor;
+  let dash = dock.dash;
+  switch (dock._position) {
+    case DockPosition.LEFT:
+      return visibleEdge('left', pos[0], dash.translationX, mon.x) - renderOffset[0];
+    case DockPosition.RIGHT:
+      return visibleEdge('right', pos[0] + box.width, dash.translationX, mon.x + mon.width) - renderOffset[0];
+    case DockPosition.TOP:
+      return visibleEdge('top', pos[1], dash.translationY, mon.y) - renderOffset[1];
+    default:
+      return visibleEdge('bottom', pos[1] + box.height, dash.translationY, mon.y + mon.height) - renderOffset[1];
+  }
+}
 
 class DockItemMenu extends PopupMenu.PopupMenu {
   constructor(sourceActor, side = St.Side.TOP, params = {}) {
@@ -123,7 +152,8 @@ class DockItemMenu extends PopupMenu.PopupMenu {
 
   popup() {
     this.open(BoxPointer.PopupAnimation.FULL);
-    this._menuManager.ignoreRelease();
+    // PopupMenuManager.ignoreRelease() is gone in newer Shells
+    this._menuManager.ignoreRelease?.();
   }
 
   destroy() {
@@ -162,52 +192,61 @@ export const DockItemDotsOverlay = GObject.registerClass(
         name: 'd2daDotsOverlay',
         ...params,
       });
+      // the overlay carries the icon's bounce; the baseline offset lives on
+      // the inner renderer, so at rest the overlay translation is exactly 0
+      this._follower = new TranslationFollower(this);
     }
 
     update(icon, data) {
       let renderer = this.renderer;
       let { appCount, position, vertical, extension, dock } = data;
 
-      renderer.width = dock._iconSizeScaledDown || icon._icon.width;
-      renderer.height = dock._iconSizeScaledDown || icon._icon.height;
-      renderer.pivot_point = icon._icon.pivot_point;
-
-      let canvasScale = renderer.width / renderer._canvas.width;
-
-      // scaling fix
-      let scale = dock._monitor.geometry_scale || 1;
-      canvasScale *= scale;
-      renderer._canvas.set_scale(canvasScale, canvasScale);
-
-      let offsetX = 0;
-      let offsetY = renderer.height * 0.125 * scale;
-      if (vertical) {
-        offsetX = -offsetY;
-        if (position == DockPosition.RIGHT) {
-          offsetX = offsetY;
-        }
-        offsetY = 0;
-      } else {
-        if (position == DockPosition.TOP) {
-          offsetY = -offsetY;
-        }
-      }
-
-      // renderer.translationX = icon._icon.translationX + offsetX;
-      // renderer.translationY = icon._icon.translationY + offsetY;
-
-      renderer.translationX = offsetX;
-      renderer.translationY = offsetY;
+      this._follower.to(icon._renderer);
 
       let options = extension.running_indicator_style_options;
       let running_indicator_style = options[extension.running_indicator_style];
-      let running_indicator_color = extension.running_indicator_color;
+
+      // Every item's indicator sits on one baseline: the overlay is a fixed
+      // square (the unmagnified icon size) flush with the dock edge and the
+      // band is moved to a margin inside it, so neither the item's own size,
+      // normalization nor magnification changes where the dots are.
+      let rest = dock._iconSizeScaledDown * dock._scaleFactor;
+      this.set_size(rest, rest);
+      this.set_scale(1, 1);
+      renderer.set_size(rest, rest);
+
+      let canvasScale = rest / renderer._canvas.width;
+      renderer._canvas.set_scale(canvasScale, canvasScale);
+
+      let sizeIndex = extension.running_indicator_size || 0;
+      let style = running_indicator_style || 'default';
+      if (this._bandStyle !== style || this._bandSize !== sizeIndex) {
+        this._bandStyle = style;
+        this._bandSize = sizeIndex;
+        this._band = indicatorBand(style, sizeIndex, renderer._canvas.width);
+      }
+      let slotSize = icon._slotSize;
+      let at = indicatorPlacement({
+        position,
+        edge: dockEdge(dock, dock.renderArea.get_transformed_position()),
+        along: (vertical ? icon._slotY : icon._slotX) + slotSize / 2,
+        rest,
+        band: this._band,
+        canvas: renderer._canvas.width,
+        margin: Math.max(1, rest * INDICATOR_EDGE_MARGIN),
+      });
+      this.set_position(at.x, at.y);
+      renderer.translationX = at.dx;
+      renderer.translationY = at.dy;
+
+      let running_indicator_color =
+        extension.contrast_colors?.indicator ?? extension.running_indicator_color;
 
       renderer.set_state({
         count: appCount,
         color: running_indicator_color || [1, 1, 1, 1],
-        style: running_indicator_style || 'default',
-        size: extension.running_indicator_size || 0,
+        style,
+        size: sizeIndex,
         rotate: vertical
           ? position == DockPosition.RIGHT
             ? -90
@@ -220,6 +259,9 @@ export const DockItemDotsOverlay = GObject.registerClass(
   }
 );
 
+// shared, so the per-frame badge update allocates no array
+const BADGE_TRANSLATE = [0.35, -0.85];
+
 export const DockItemBadgeOverlay = GObject.registerClass(
   {},
   class DockItemBadgeOverlay extends DockItemOverlay {
@@ -228,11 +270,14 @@ export const DockItemBadgeOverlay = GObject.registerClass(
         name: 'd2daBadgeOverlay',
         ...params,
       });
+      // badges, counters and progress bars bounce with their icon
+      this._follower = new TranslationFollower(this);
     }
 
     update(icon, data) {
       let renderer = this.renderer;
-      let { noticesCount, position, vertical, extension, dock } = data;
+      let { noticesCount, progress, style, extension, dock } = data;
+      this._follower.to(icon._renderer);
 
       let baseIconSize = dock._iconSizeScaledDown || icon._icon.width;
       renderer.width = baseIconSize;
@@ -244,9 +289,6 @@ export const DockItemBadgeOverlay = GObject.registerClass(
       canvasScale *= scale;
       renderer._canvas.set_scale(canvasScale, canvasScale);
 
-      let options = extension.notification_badge_style_options;
-      let notification_badge_style =
-        options[extension.notification_badge_style];
       let notification_badge_color = extension.notification_badge_color;
 
       // Dot canvas draws dots near the bottom (y = size - height, or +0.42*height from center).
@@ -256,10 +298,12 @@ export const DockItemBadgeOverlay = GObject.registerClass(
 
       renderer.set_state({
         count: noticesCount,
+        progress,
         color: notification_badge_color || [1, 1, 1, 1],
-        style: notification_badge_style || 'default',
+        style,
         size: extension.notification_badge_size || 0,
-        translate: [0.35, -0.85],
+        // the count bubble positions itself in the top-right corner
+        translate: style == 'count' ? null : BADGE_TRANSLATE,
       });
     }
   }
@@ -284,10 +328,24 @@ export const DockIcon = GObject.registerClass(
       }
     }
 
+    // A folder stack "Displayed as Stack" shows its top file instead of the
+    // folder icon; kept here so an icon re-created on resize keeps it.
+    setStackGicon(gicon) {
+      this._stackGicon = gicon;
+      if (!this._iconActor) return;
+      if (gicon) {
+        this._iconActor.gicon = gicon;
+      } else {
+        this._iconActor.icon_name = this._default_icon_name || 'file';
+      }
+    }
+
     _createIcon(size) {
       this._iconActor = new St.Icon({
         name: 'd2daDockIconActor',
-        icon_name: this._default_icon_name || 'file',
+        ...(this._stackGicon
+          ? { gicon: this._stackGicon }
+          : { icon_name: this._default_icon_name || 'file' }),
         icon_size: size,
         style_class: this._default_icon_style_class || '',
         track_hover: true,
@@ -356,30 +414,7 @@ export const DockItemContainer = GObject.registerClass(
 
       this.custom_icon = true;
 
-      const DesktopAppInfo = GioUnix?.DesktopAppInfo ?? Gio.DesktopAppInfo;
-
-      let desktopApp = params.app;
-      if (desktopApp) {
-        // monkey patch dummy app
-        if (!desktopApp.get_id) {
-          desktopApp.get_id = () => null;
-        }
-        if (!desktopApp.get_name) {
-          desktopApp.get_name = () => '';
-        }
-        if (!desktopApp.get_icon) {
-          desktopApp.can_open_new_window = () => false;
-          desktopApp.create_icon_texture = () => null;
-          desktopApp.get_windows = () => null;
-          desktopApp.get_icon = () => {
-            return {
-              get_names: () => [],
-            };
-          };
-        }
-      } else if (params.appinfo_filename) {
-        desktopApp = DesktopAppInfo.new_from_filename(params.appinfo_filename);
-      }
+      let desktopApp = this._resolveDesktopApp(params);
 
       // for custom buttons 
       if (!desktopApp.can_open_new_window) {
@@ -416,19 +451,53 @@ export const DockItemContainer = GObject.registerClass(
 
       // menu
       if (params.appinfo_filename || params.app) {
-        this._menu = new DockItemMenu(this, St.Side.TOP, {
-          desktopApp,
-          item: this,
-        });
-        this._menu.item = this;
-        this._menuManager = new PopupMenu.PopupMenuManager(this);
-        this._menu._menuManager = this._menuManager;
-        Main.uiGroup.add_child(this._menu.actor);
-        this._menuManager.addMenu(this._menu);
-        this._menu.close();
-        dashIcon._menu = this._menu;
-        this.connect('destroy', () => this._destroyMenu());
+        this._attachMenu(desktopApp, dashIcon);
       }
+    }
+
+    // The app behind the container: the given one (dummy members patched in
+    // for custom buttons) or the desktop entry named by params.
+    _resolveDesktopApp(params) {
+      const DesktopAppInfo = GioUnix?.DesktopAppInfo ?? Gio.DesktopAppInfo;
+
+      let desktopApp = params.app;
+      if (desktopApp) {
+        // monkey patch dummy app
+        if (!desktopApp.get_id) {
+          desktopApp.get_id = () => null;
+        }
+        if (!desktopApp.get_name) {
+          desktopApp.get_name = () => '';
+        }
+        if (!desktopApp.get_icon) {
+          desktopApp.can_open_new_window = () => false;
+          desktopApp.create_icon_texture = () => null;
+          desktopApp.get_windows = () => null;
+          desktopApp.get_icon = () => {
+            return {
+              get_names: () => [],
+            };
+          };
+        }
+      } else if (params.appinfo_filename) {
+        desktopApp = DesktopAppInfo.new_from_filename(params.appinfo_filename);
+      }
+      return desktopApp;
+    }
+
+    _attachMenu(desktopApp, dashIcon) {
+      this._menu = new DockItemMenu(this, St.Side.TOP, {
+        desktopApp,
+        item: this,
+      });
+      this._menu.item = this;
+      this._menuManager = new PopupMenu.PopupMenuManager(this);
+      this._menu._menuManager = this._menuManager;
+      Main.uiGroup.add_child(this._menu.actor);
+      this._menuManager.addMenu(this._menu);
+      this._menu.close();
+      dashIcon._menu = this._menu;
+      this.connect('destroy', () => this._destroyMenu());
     }
 
     _destroyMenu() {
@@ -462,6 +531,9 @@ export const DockBackground = GObject.registerClass(
         name: 'DockBackground',
         ...(params || {}),
       });
+      // what the Dash adds around the icons' slots, along the dock (update())
+      this._slotPad = undefined;
+      this._slotPadVertical = undefined;
     }
 
     update(params) {
@@ -489,63 +561,97 @@ export const DockBackground = GObject.registerClass(
       let padding =
         iconSize * 0.1 * (dock.extension.dock_padding || 0) * scaleFactor;
 
-      if (first && last) {
-        let tx = first._icon.translationX;
-        let ty = first._icon.translationY;
-        let tx2 = last._icon.translationX;
-        let ty2 = last._icon.translationY;
+      let tx = first._icon.translationX;
+      let ty = first._icon.translationY;
+      let tx2 = last._icon.translationX;
+      let ty2 = last._icon.translationY;
 
-        // bottom
-        this.x = dp[0];
-        this.y = dp[1];
-        let width = dock.dash.width;
-        let height = dock.dash.height;
+      // bottom
+      this.x = dp[0];
+      this.y = dp[1];
+      let [width, height] = this._fitToSlots(
+        dock,
+        vertical,
+        dock.dash.width,
+        dock.dash.height
+      );
 
-        if (dock.isVertical()) {
-          this.y += ty;
-          height += ty2 - ty;
-        } else {
-          this.x += tx;
-          width += tx2 - tx;
-        }
-
-        // padding
-        this.x -= padding;
-        width += padding * 2;
-        this.y -= padding;
-        height += padding * 2;
-
-        if (!isNaN(width)) {
-          this.width = width;
-        }
-        if (!isNaN(height)) {
-          this.height = height;
-        }
-
-        this.x -= dock.x;
-        this.y -= dock.y;
-        this._padding = padding;
-
-        // adjust padding
-        let az = -padding;
-        this.x += az / 2;
-        this.width -= az * (1 + !vertical);
-        this.y += az / 2;
-        this.height -= az * (1 + vertical);
-
-        if (panel_mode) {
-          if (vertical) {
-            this.y = 0;
-            this.height = dock.height;
-          } else {
-            this.x = 0;
-            this.width = dock.width;
-          }
-        }
-
-        this.opacity = 255;
-        dock.dash.opacity = this.opacity;
+      if (vertical) {
+        this.y += ty;
+        height += ty2 - ty;
+      } else {
+        this.x += tx;
+        width += tx2 - tx;
       }
+
+      // padding
+      this.x -= padding;
+      width += padding * 2;
+      this.y -= padding;
+      height += padding * 2;
+
+      if (!isNaN(width)) {
+        this.width = width;
+      }
+      if (!isNaN(height)) {
+        this.height = height;
+      }
+
+      this.x -= dock.x;
+      this.y -= dock.y;
+      this._padding = padding;
+
+      // adjust padding
+      let az = -padding;
+      this.x += az / 2;
+      this.width -= az * (1 + !vertical);
+      this.y += az / 2;
+      this.height -= az * (1 + vertical);
+
+      if (panel_mode) {
+        if (vertical) {
+          this.y = 0;
+          this.height = dock.height;
+        } else {
+          this.x = 0;
+          this.width = dock.width;
+        }
+      }
+
+      this.opacity = 255;
+      dock.dash.opacity = this.opacity;
+    }
+
+    // Along the dock the platter spans the icons' own slots (what the
+    // animator measured and the translations are relative to), not the live
+    // size of the Dash: after an item is added the Dash can already have its
+    // final size while the slots are still those of an intermediate
+    // allocation, which showed as a one-frame dip. What the slots do not
+    // cover (the Dash's own padding) is learned while they hold still.
+    // Moves this.x/y to the slots' start; returns the [width, height] to use.
+    _fitToSlots(dock, vertical, width, height) {
+      const slots = dock.animator?.layout;
+      if (!slots?.nodeCount) {
+        return [width, height];
+      }
+      const span = slots.spanEnd - slots.spanStart;
+      // the pad belongs to one axis: forget it when the dock turns
+      if (this._slotPadVertical !== vertical) {
+        this._slotPad = undefined;
+        this._slotPadVertical = vertical;
+      }
+      if (slots.settled) {
+        this._slotPad = ((vertical ? height : width) - span) / 2;
+      }
+      if (!Number.isFinite(this._slotPad)) {
+        return [width, height];
+      }
+      if (vertical) {
+        this.y = slots.spanStart - this._slotPad;
+        return [width, span + 2 * this._slotPad];
+      }
+      this.x = slots.spanStart - this._slotPad;
+      return [span + 2 * this._slotPad, height];
     }
   }
 );

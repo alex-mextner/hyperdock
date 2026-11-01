@@ -1,6 +1,6 @@
 // gjs -m tests/compat_baseline_check.js — Task 4.1 baseline functional check
 // Tests app & icon discovery contracts, favorites querying, window maximize arity,
-// and overview interactions against simulated GNOME 45–50 data structures.
+// and overview interactions against simulated GNOME 50 data structures.
 
 let failures = 0;
 function check(cond, msg) {
@@ -27,8 +27,6 @@ function resolveAppId(appwell) {
       if (id) return id;
     } catch (_) {}
   }
-  if (appwell.id) return appwell.id;
-  if (appwell._id) return appwell._id;
   return '';
 }
 
@@ -43,7 +41,7 @@ check(
   'App ID: resolves via getId() on modern AppIcon'
 );
 
-// Case 1b: Legacy AppIcon without getId() but with app.get_id()
+// Case 1b: AppIcon-like object with only app.get_id()
 const appwellLegacy = {
   _id: 'org.gnome.Terminal.desktop',
   app: { get_id: () => 'org.gnome.Terminal.desktop' },
@@ -51,15 +49,6 @@ const appwellLegacy = {
 check(
   resolveAppId(appwellLegacy) === 'org.gnome.Terminal.desktop',
   'App ID: resolves via app.get_id() when getId() missing'
-);
-
-// Case 1c: Appwell with only private _id (e.g. bounce target)
-const appwellPrivate = {
-  _id: 'org.gnome.Calculator.desktop',
-};
-check(
-  resolveAppId(appwellPrivate) === 'org.gnome.Calculator.desktop',
-  'App ID: falls back to _id when public getters missing'
 );
 
 // Case 1d: Null/empty appwell
@@ -80,21 +69,6 @@ function getFavoriteAppIds(favManager) {
       }
     } catch (_) {}
   }
-  // Public GNOME Shell API: getFavoriteMap() returns { [appId]: Shell.App }
-  if (typeof favManager.getFavoriteMap === 'function') {
-    try {
-      const map = favManager.getFavoriteMap();
-      if (map && typeof map === 'object') {
-        return Object.keys(map);
-      }
-    } catch (_) {}
-  }
-  // Legacy / private fallback: _getIds()
-  if (typeof favManager._getIds === 'function') {
-    try {
-      return favManager._getIds();
-    } catch (_) {}
-  }
   return [];
 }
 
@@ -106,18 +80,8 @@ const mockFavApps = [
 
 const mockFavManagerPublic = {
   getFavorites() { return mockFavApps; },
-  getFavoriteMap() {
-    return {
-      'org.gnome.Nautilus.desktop': mockFavApps[0],
-      'org.gnome.Software.desktop': mockFavApps[1],
-      'org.gnome.Settings.desktop': mockFavApps[2],
-    };
-  },
   isFavorite(id) {
     return mockFavApps.some((a) => a.get_id() === id);
-  },
-  _getIds() {
-    return mockFavApps.map((a) => a.get_id());
   },
 };
 
@@ -136,17 +100,6 @@ check(
   'Favorites: isFavorite correctly identifies member and non-member'
 );
 
-// Fallback test: when getFavorites throws or missing, falls back to _getIds
-const mockFavManagerPrivateOnly = {
-  _getIds() { return ['app1.desktop', 'app2.desktop']; },
-};
-const fallbackFavs = getFavoriteAppIds(mockFavManagerPrivateOnly);
-check(
-  fallbackFavs.length === 2 && fallbackFavs[0] === 'app1.desktop',
-  'Favorites: fallback to _getIds() works when public API absent'
-);
-
-
 // ---------------------------------------------------------------------
 // 3. St.Icon Extraction from AppWell Baseline (_getStIconFromAppwell)
 // ---------------------------------------------------------------------
@@ -160,46 +113,28 @@ function getStIconFromAppwell(appwell) {
   // Direct .icon property (works after setIconSize is called)
   if (baseIcon.icon) return baseIcon.icon;
 
-  // GNOME 50: _iconBin.child
-  if (baseIcon._iconBin && baseIcon._iconBin.child) return baseIcon._iconBin.child;
-
   // Force icon creation if not yet initialized
   try {
     if (typeof baseIcon.setIconSize === 'function') {
       let size = (typeof baseIcon.iconSize === 'number' && baseIcon.iconSize > 0) ? baseIcon.iconSize : 48;
       baseIcon._createIconTexture(size);
       if (baseIcon.icon) return baseIcon.icon;
-      if (baseIcon._iconBin && baseIcon._iconBin.child) return baseIcon._iconBin.child;
     }
   } catch (_) {}
 
   return null;
 }
 
-// Case 3a: GNOME 50 BaseIcon with _iconBin.child
+// Case 3a: GNOME 50 BaseIcon owning its St.Icon as .icon
 const mockStIcon50 = { isStIcon: true, name: 'st-icon-50', opacity: 255 };
 const appwellGnome50 = {
   icon: {
-    _iconBin: { child: mockStIcon50 },
-    icon: null,
+    icon: mockStIcon50,
   },
 };
 check(
   getStIconFromAppwell(appwellGnome50) === mockStIcon50,
-  'Icon extraction: GNOME 50 BaseIcon extracts from _iconBin.child'
-);
-
-// Case 3b: GNOME 46 BaseIcon / IconGrid with .icon property
-const mockStIcon46 = { isStIcon: true, name: 'st-icon-46', opacity: 255 };
-const appwellGnome46 = {
-  icon: {
-    icon: mockStIcon46,
-    _iconBin: null,
-  },
-};
-check(
-  getStIconFromAppwell(appwellGnome46) === mockStIcon46,
-  'Icon extraction: GNOME 46 BaseIcon extracts from icon.icon'
+  'Icon extraction: GNOME 50 BaseIcon extracts from icon.icon'
 );
 
 // Case 3c: Lazy initialization via _createIconTexture
@@ -208,12 +143,11 @@ const mockStIconLazy = { isStIcon: true, name: 'st-icon-lazy', opacity: 255 };
 const appwellLazy = {
   icon: {
     icon: null,
-    _iconBin: { child: null },
     iconSize: 48,
     setIconSize(size) { this._createIconTexture(size); },
     _createIconTexture(size) {
       textureCreated = true;
-      this._iconBin.child = mockStIconLazy;
+      this.icon = mockStIconLazy;
     },
   },
 };
@@ -296,7 +230,7 @@ const appContainer = {
     app: { get_id: () => 'org.gnome.Nautilus.desktop' },
     _dot: { opacity: 255 },
     icon: {
-      _iconBin: { child: { isStIcon: true, opacity: 255 } },
+      icon: { isStIcon: true, opacity: 255 },
     },
   },
 };
@@ -317,7 +251,7 @@ const nonFavContainer = {
     app: { get_id: () => 'com.example.Random.desktop' },
     _dot: { opacity: 255 },
     icon: {
-      _iconBin: { child: { isStIcon: true, opacity: 255 } },
+      icon: { isStIcon: true, opacity: 255 },
     },
   },
 };
@@ -381,34 +315,17 @@ check(overviewToggled === true, 'Overview: toggle() called when overview is alre
 // ---------------------------------------------------------------------
 function maximizeWindow(win) {
   if (!win || typeof win.maximize !== 'function') return;
-  // Mutter arity detection: GNOME 49+ takes 0 arguments; older Mutter takes Meta.MaximizeFlags (3)
-  if (win.maximize.length === 0) {
-    win.maximize();
-  } else {
-    win.maximize(3);
-  }
+  win.maximize();
 }
 
-let legacyMaximizedWith = null;
-const legacyWin = {
-  maximize(flags) { legacyMaximizedWith = flags; },
-};
-maximizeWindow(legacyWin);
-check(legacyMaximizedWith === 3, 'Window maximize: legacy window called with flag 3');
-
-let modernMaximizedCalled = false;
 let modernMaximizedWith = undefined;
 const modernWin = {
   maximize() {
-    modernMaximizedCalled = true;
     modernMaximizedWith = arguments.length;
   },
 };
 maximizeWindow(modernWin);
-check(
-  modernMaximizedCalled === true && modernMaximizedWith === 0,
-  'Window maximize: modern window called with 0 arguments'
-);
+check(modernMaximizedWith === 0, 'Window maximize: called with 0 arguments');
 
 
 // ---------------------------------------------------------------------
@@ -417,8 +334,8 @@ check(
 import * as Compat from '../compat.js';
 
 check(Compat.getAppId(appwell50) === 'org.gnome.Nautilus.desktop', 'compat.js: getAppId matches modern AppIcon');
-check(Compat.getAppId(appwellLegacy) === 'org.gnome.Terminal.desktop', 'compat.js: getAppId matches legacy AppIcon');
-check(Compat.getAppId(appwellPrivate) === 'org.gnome.Calculator.desktop', 'compat.js: getAppId matches private _id');
+check(Compat.getAppId({ _id: 'custom.desktop' }) === 'custom.desktop', 'compat.js: getAppId falls back to _id of custom dock icons');
+check(Compat.getAppId(appwellLegacy) === 'org.gnome.Terminal.desktop', 'compat.js: getAppId matches app.get_id()');
 
 const compatFavs = Compat.getFavoriteAppIds(mockFavManagerPublic);
 check(
@@ -431,8 +348,7 @@ check(
   'compat.js: isFavoriteApp checks membership'
 );
 
-check(Compat.getStIcon(appwellGnome50) === mockStIcon50, 'compat.js: getStIcon extracts GNOME 50 _iconBin.child');
-check(Compat.getStIcon(appwellGnome46) === mockStIcon46, 'compat.js: getStIcon extracts GNOME 46 icon.icon');
+check(Compat.getStIcon(appwellGnome50) === mockStIcon50, 'compat.js: getStIcon extracts GNOME 50 icon.icon');
 
 let compatOverviewToggle = false;
 let compatOverviewShowApps = false;
@@ -447,29 +363,21 @@ compatMockOverview.visible = true;
 Compat.showOverviewApps(compatMockOverview);
 check(compatOverviewToggle === true, 'compat.js: showOverviewApps calls toggle when visible');
 
-let compatLegacyMax = null;
-Compat.maximizeWindow({ maximize(f) { compatLegacyMax = f; } });
-check(compatLegacyMax === 3, 'compat.js: maximizeWindow passes 3 for legacy');
-let compatModernMax = null;
-Compat.maximizeWindow({ maximize() { compatModernMax = arguments.length; } });
-check(compatModernMax === 0, 'compat.js: maximizeWindow passes 0 for modern');
-
-let compatLegacyUnmax = null;
-Compat.unmaximizeWindow({ unmaximize(f) { compatLegacyUnmax = f; } });
-check(compatLegacyUnmax === 3, 'compat.js: unmaximizeWindow passes 3 for legacy');
-let compatModernUnmax = null;
-Compat.unmaximizeWindow({ unmaximize() { compatModernUnmax = arguments.length; } });
-check(compatModernUnmax === 0, 'compat.js: unmaximizeWindow passes 0 for modern');
+let compatMax = null;
+Compat.maximizeWindow({ maximize() { compatMax = arguments.length; } });
+check(compatMax === 0, 'compat.js: maximizeWindow passes no flags');
+let compatUnmax = null;
+Compat.unmaximizeWindow({ unmaximize() { compatUnmax = arguments.length; } });
+check(compatUnmax === 0, 'compat.js: unmaximizeWindow passes no flags');
 
 // Dash encapsulation checks
 const mockBox = { get_children: () => [], layout_manager: { orientation: 0 }, text_direction: 1 };
-const mockContainer = { last_child: mockBox, layout_manager: { orientation: 0 }, text_direction: 1 };
+const mockContainer = { layout_manager: { orientation: 0 }, text_direction: 1 };
 const mockShowApps = { visible: true, opacity: 255, child: { reactive: true, track_hover: true } };
 const mockBg = { visible: true, style: '', first_child: null };
 const mockDash = {
   _box: mockBox,
   _dashContainer: mockContainer,
-  last_child: mockContainer,
   _showAppsIcon: mockShowApps,
   _background: mockBg,
   _adjustIconSize() { return 48; },

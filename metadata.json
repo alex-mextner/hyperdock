@@ -1,14 +1,11 @@
 {
   "description": "The Animated & Effectful Dock",
-  "name": "Dash2Dock Animated",
+  "name": "Hyperdock",
   "original-authors": ["icedman"],
-  "shell-version": ["45", "46", "47", "48", "49", "50"],
-  "url": "https://github.com/icedman/dash2dock-lite",
-  "uuid": "dash2dock-lite@icedman.github.com",
-  "schema-id": "org.gnome.shell.extensions.dash2dock-lite",
-  "gettext-domain": "dash2dock-lite",
-  "donations": {
-    "buymeacoffee": "icedman"
-  },
-  "version": 100
+  "shell-version": ["50"],
+  "url": "https://github.com/alex-mextner/hyperdock",
+  "uuid": "hyperdock@alex-mextner.github.com",
+  "schema-id": "org.gnome.shell.extensions.hyperdock",
+  "gettext-domain": "hyperdock",
+  "version": 101
 }

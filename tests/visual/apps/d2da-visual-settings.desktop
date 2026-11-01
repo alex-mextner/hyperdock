@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Settings
+Exec=true
+Icon=@ICONDIR@/settings.svg
+Terminal=false
