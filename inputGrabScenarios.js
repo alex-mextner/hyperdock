@@ -163,6 +163,19 @@ async function exercise(c, k, d, h) {
   await h.sleep(500);
   h.check(S, `${label}: a click outside closes it`, !c.isOpen());
   await c.close();
+
+  // Super with the overview already open leaves it, and the popover goes too
+  Main.overview.show();
+  await h.sleep(1500);
+  await c.open();
+  h.check(S, `${label}: opens over the overview`, c.isOpen());
+  await k.chord([KEY.KEY_Super_L]);
+  await h.sleep(1200);
+  h.check(S, `${label}: a tap of Super closes the overview`, !Main.overview.visible, { visible: Main.overview.visible });
+  h.check(S, `${label}: a tap of Super closes it with the overview`, !c.isOpen());
+  await h.closeOverview();
+  await c.close();
+
   h.check(S, `${label}: the modal stack is empty afterwards`, Main.actionMode === Shell.ActionMode.NORMAL, { actionMode: Main.actionMode });
 }
 

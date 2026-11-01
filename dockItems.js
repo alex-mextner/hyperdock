@@ -6,6 +6,7 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import * as ModalDialog from 'resource:///org/gnome/shell/ui/modalDialog.js';
 import * as Dialog from 'resource:///org/gnome/shell/ui/dialog.js';
 import { trySpawnCommandLine } from './utils.js';
+import { attachMenuToOverlayKey } from './popoverInput.js';
 
 // import { trySpawnCommandLine } from 'resource:///org/gnome/shell/misc/util.js';
 
@@ -510,6 +511,7 @@ export const DockItemContainer = GObject.registerClass(
       this._menu._menuManager = this._menuManager;
       Main.uiGroup.add_child(this._menu.actor);
       this._menuManager.addMenu(this._menu);
+      attachMenuToOverlayKey(this._menu);
       this._menu.close();
       dashIcon._menu = this._menu;
       this.connect('destroy', () => this._destroyMenu());

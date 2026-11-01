@@ -22,6 +22,7 @@ import { DockIcon, DockItemContainer, DockBackground } from './dockItems.js';
 import { AutoHide } from './autohide.js';
 import { Animator } from './animator.js';
 import { live } from './probe.js';
+import { attachMenuToOverlayKey } from './popoverInput.js';
 import { get_distance_sqr, get_distance, isInRect, isOverlapRect } from './utils.js';
 import { syncOpenAtLogin, hideOpenAtLogin } from './openAtLogin.js';
 import { orderExtraIcons, syncFolderStacks, syncRecentsStack } from './stackDock.js';
@@ -1222,6 +1223,7 @@ export let Dock = GObject.registerClass(
       appwell._popupMenu = appwell.popupMenu;
       appwell.popupMenu = (...args) => {
         let ret = appwell._popupMenu(...args);
+        if (appwell._menu) attachMenuToOverlayKey(appwell._menu);
         try {
           syncShowAllWindowsItem(
             appwell,
