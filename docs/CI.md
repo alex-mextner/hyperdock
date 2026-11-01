@@ -49,6 +49,7 @@ const { module } = await importWithStubs('launcherEntry.js', {
 | `recents_check.js` | folder-stack/recents file list: sort orders, hidden files, counts, missing folder, fan size |
 | `stack_model_check.js`, `stack_sources_check.js`, `stack_geometry_check.js`, `stack_panel_check.js` | stacks: date/kind batches, pile layout, the dock group's order, which stacks the settings ask for, recent-app items, popover placement, press handling, persisting a stack option |
 | `stack_pile_check.js` | the pile renderer (`apps/stack-pile.js`): PNG output, nothing clipped, missing files fall back to cards |
+| `app_grid_pile_selection_check.js`, `app_grid_pile_layout_check.js`, `app_first_seen_check.js` | the apps icon's pile: which apps (counts, pinned/running/helper exclusions, ordering), where the icons lie (deterministic, inside the plate), when an app was first seen installed (upgrades never make it new) |
 | `desktop_escape_check.js` | `.desktop` value/Exec escaping, round-tripped through the real keyfile and shell parsers for hostile paths |
 | `geometry_check.js` | `isInRect` / `isOverlapRect` / distance helpers behind hit-testing and intellihide |
 | `timer_check.js`, `window_tracker_check.js`, `compat_baseline_check.js` | timer hardening, window tracking lifecycle, Shell compatibility layer |

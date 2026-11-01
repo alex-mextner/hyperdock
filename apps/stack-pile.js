@@ -26,6 +26,10 @@
 // exit 0 with a PNG on stdout; exit 1 and a message on stderr only when the
 // JSON is malformed or Cairo fails.
 //
+// An optional "plate" ({"inset": 0.05, "radius": 0.2, "pad": 0.01}, fractions
+// of the picture) puts the pile on a translucent rounded square, as the app-grid
+// icon does (appGridPileLayout.js); the pile is then fitted inside the plate.
+//
 // usage: gjs -m stack-pile.js <size-px>
 
 import Cairo from 'cairo';
@@ -39,17 +43,26 @@ import {
   loadPixbuf,
   roundedRect,
 } from './cards.js';
+import {
+  CARD,
+  SHADOW,
+  SHADOW_PASSES,
+  iconReach,
+  shadowPassShift,
+} from '../pileMetrics.js';
 
-const CARD = 0.78; // card width as a fraction of the icon, before the fit
 const PRINT = 1.1; // a photo print is its picture plus a border on each side
 const MARGIN = 0.03; // kept clear at every canvas edge, shadow included
-const SHADOW = 0.07; // the drop shadow reaches this far below a card
+// an icon's shadow, per pass; on a plate it is stronger, to set the many
+// overlapping icons of a heap apart
+const ICON_SHADOW = 0.08;
+const PLATE_ICON_SHADOW = 0.13;
 
-function readLayers() {
+function readDoc() {
   let [, bytes] = Gio.File.new_for_path('/dev/stdin').load_contents(null);
   let doc = JSON.parse(new TextDecoder().decode(bytes));
   if (!Array.isArray(doc?.layers)) throw new Error('"layers" must be an array');
-  return doc.layers;
+  return { layers: doc.layers, plate: doc.plate ? { inset: 0, radius: 0, pad: 0, ...doc.plate } : null };
 }
 
 function fileSize(path) {
@@ -86,8 +99,12 @@ function prepare(layer, S) {
   return { layer, box, c, item, pixbuf, extent };
 }
 
-// half-extent of a w x h box rotated by `deg`, plus the layer's offset
+// how far the layer reaches from the picture's centre: its (rotated) box and
+// shadow, at the layer's offset
 function reach(p, S) {
+  if (p.icon) {
+    return iconReach(p.box, p.layer.angle ?? 0, (p.layer.x ?? 0) * S, (p.layer.y ?? 0) * S);
+  }
   let a = ((p.layer.angle ?? 0) * Math.PI) / 180;
   let [w, h] = p.extent;
   let half = (w * Math.abs(Math.cos(a)) + h * Math.abs(Math.sin(a))) / 2;
@@ -96,9 +113,16 @@ function reach(p, S) {
   return Math.max(half + dx, half + dy + SHADOW * p.box);
 }
 
-// shrink factor that keeps every rotated, offset card inside the canvas
-function fitFactor(prepared, S) {
-  let room = S / 2 - MARGIN * S;
+// half the side of the area the pile must stay inside: the canvas, or the
+// plate's inner square
+function pileRoom(S, plate) {
+  if (!plate) return S / 2 - MARGIN * S;
+  return S * (0.5 - (plate.inset ?? 0) - (plate.pad ?? 0));
+}
+
+// shrink factor that keeps every rotated, offset card inside the room
+function fitFactor(prepared, S, plate) {
+  let room = pileRoom(S, plate);
   let widest = Math.max(...prepared.map((p) => reach(p, S)), 1);
   return Math.min(1, room / widest);
 }
@@ -118,13 +142,14 @@ function iconPattern(cr, pixbuf, box) {
 
 // soft shadow: the icon's silhouette, offset down and smeared a little, so the
 // icon lifts off the one behind it whatever shape it has
-function drawIcon(cr, pixbuf, box) {
+function drawIcon(cr, pixbuf, box, shadow) {
   cr.save();
   let pattern = iconPattern(cr, pixbuf, box);
-  for (let i = 3; i >= 1; i--) {
+  for (let i = SHADOW_PASSES; i >= 1; i--) {
     cr.save();
-    cr.translate(box * 0.01 * i, box * (0.02 + 0.015 * i));
-    cr.setSourceRGBA(0, 0, 0, 0.08);
+    let [dx, dy] = shadowPassShift(i);
+    cr.translate(box * dx, box * dy);
+    cr.setSourceRGBA(0, 0, 0, shadow);
     cr.mask(pattern);
     cr.restore();
   }
@@ -133,7 +158,7 @@ function drawIcon(cr, pixbuf, box) {
   cr.restore();
 }
 
-function drawLayer(cr, p, S, k) {
+function drawLayer(cr, p, S, k, shadow) {
   let { layer } = p;
   cr.save();
   cr.translate(
@@ -143,19 +168,37 @@ function drawLayer(cr, p, S, k) {
   let angle = ((layer.angle ?? 0) * Math.PI) / 180;
   if (p.icon) {
     cr.rotate(angle);
-    drawIcon(cr, p.icon, p.box * k);
+    drawIcon(cr, p.icon, p.box * k, shadow);
   } else {
     drawCard(cr, p.item, p.c * k, angle, p.pixbuf, true);
   }
   cr.restore();
 }
 
-function drawPile(layers, S) {
+// the frosted plate: a translucent rounded square, lighter at the top, with a
+// bright hairline edge, so the dock shows through it
+function drawPlate(cr, S, plate) {
+  let x = S * plate.inset;
+  let side = S - 2 * x;
+  roundedRect(cr, x, x, side, side, S * plate.radius);
+  let fill = new Cairo.LinearGradient(0, x, 0, x + side);
+  fill.addColorStopRGBA(0, 1, 1, 1, 0.34);
+  fill.addColorStopRGBA(1, 1, 1, 1, 0.14);
+  cr.setSource(fill);
+  cr.fillPreserve();
+  cr.setLineWidth(S * 0.008);
+  cr.setSourceRGBA(1, 1, 1, 0.45);
+  cr.stroke();
+}
+
+function drawPile({ layers, plate }, S) {
   let surface = new Cairo.ImageSurface(Cairo.Format.ARGB32, S, S);
   let cr = new Cairo.Context(surface);
+  if (plate) drawPlate(cr, S, plate);
   let prepared = layers.map((layer) => prepare(layer, S));
-  let k = fitFactor(prepared, S);
-  for (let p of prepared) drawLayer(cr, p, S, k);
+  let k = fitFactor(prepared, S, plate);
+  let shadow = plate ? PLATE_ICON_SHADOW : ICON_SHADOW;
+  for (let p of prepared) drawLayer(cr, p, S, k, shadow);
   return surface;
 }
 
@@ -163,7 +206,7 @@ let size = parseInt(ARGV[0] ?? '256', 10);
 if (!(size >= 16 && size <= 1024)) size = 256;
 
 try {
-  let surface = drawPile(readLayers(), size);
+  let surface = drawPile(readDoc(), size);
   // cairo writes straight into the pipe the shell reads
   surface.writeToPNG('/dev/stdout');
 } catch (e) {

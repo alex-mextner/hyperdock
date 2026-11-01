@@ -8,6 +8,7 @@ import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import { createChecker } from './harness.js';
 import { StackPile } from '../stackPile.js';
+import { PLATE, layoutPile } from '../appGridPileLayout.js';
 
 const { check, finish } = createChecker();
 const ROOT = GLib.path_get_dirname(
@@ -155,6 +156,28 @@ function runRenderChecks() {
   check(decode(render(JSON.stringify({ layers: THREE.map((p) => layer(p, CONTENT.image)) }), 64).png).get_width() === 64, 'size argument is honoured');
 }
 
+// The app-grid pile: nine app icons on a translucent rounded plate. The plate
+// shows through, its corners are cut round, and nothing is drawn outside it.
+function runPlateChecks() {
+  let ids = Array.from({ length: 9 }, (_, i) => `app${i}.desktop`);
+  let layers = layoutPile(ids).map((l) => ({ ...l, icon: fixture('icon.svg') }));
+  let r = render(JSON.stringify({ layers, plate: PLATE }));
+  check(r.status === 0 && isPng(r.png), `plate: renders (${r.err.trim()})`);
+  let alpha = alphaOf(decode(r.png));
+  let edge = Math.round(SIZE * PLATE.inset);
+  let outside = [];
+  for (let i = 0; i < SIZE; i++) {
+    for (let d = 0; d < edge - 3; d++) outside.push(alpha(d, i), alpha(i, d), alpha(SIZE - 1 - d, i), alpha(i, SIZE - 1 - d));
+  }
+  check(outside.every((a) => a === 0), 'plate: nothing is drawn outside the plate');
+  check(alpha(edge + 1, edge + 1) === 0, 'plate: its corners are rounded');
+  let side = alpha(edge + 3, SIZE >> 1);
+  check(side > 10 && side < 230, `plate: translucent where no icon lies (alpha ${side})`);
+  check(alpha(SIZE >> 1, edge + 3) > 10, 'plate: the top edge is drawn');
+  let bare = render(JSON.stringify({ layers }));
+  check(alphaOf(decode(bare.png))(edge + 3, SIZE >> 1) === 0, 'plate: without a plate the margin stays empty');
+}
+
 // colour of the pixel at the canvas centre
 function centre(pixbuf) {
   let n = pixbuf.get_n_channels();
@@ -229,6 +252,7 @@ function runWrapperChecks() {
 try {
   makeFixtures();
   runRenderChecks();
+  runPlateChecks();
   runErrorChecks();
   runThumbnailChecks();
   runWrapperChecks();

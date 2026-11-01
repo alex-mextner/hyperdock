@@ -1139,6 +1139,11 @@ export const Services = class {
       return;
     }
 
+    // the app-grid icon as a pile of apps
+    if (this.extension.appGridPile?.applyTo(item, icon, dock)) {
+      return;
+    }
+
     if (!icon.icon_name) {
       return;
     }

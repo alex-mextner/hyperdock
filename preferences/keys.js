@@ -244,6 +244,21 @@ export const SettingsKeys = (patch) => {
       default_value: false,
       widget_type: 'switch',
     },
+    'app-grid-pile': {
+      default_value: true,
+      widget_type: 'switch',
+    },
+    // counts, schema ranges 0..6 and 0..12; AdwSpinRows in ui/others.ui
+    'app-grid-pile-recent': {
+      default_value: 3,
+      widget_type: 'int',
+      test: { values: [0, 3, 6] },
+    },
+    'app-grid-pile-frequent': {
+      default_value: 6,
+      widget_type: 'int',
+      test: { values: [0, 6, 12] },
+    },
     'trash-icon': {
       default_value: false,
       widget_type: 'switch',

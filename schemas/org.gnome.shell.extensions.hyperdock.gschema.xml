@@ -478,6 +478,23 @@
         <summary>Apps icon at front</summary>
         <description>Position the apps icon at the front.</description>
     </key>
+    <key type="b" name="app-grid-pile">
+        <default>true</default>
+        <summary>Apps icon as a pile of apps</summary>
+        <description>Show the apps icon as a pile of app icons on a translucent rounded plate instead of the nine dots: the most used apps and the newest installed ones that are not in the dock. Clicking it opens the app grid as before.</description>
+    </key>
+    <key type="i" name="app-grid-pile-recent">
+        <range min="0" max="6"/>
+        <default>3</default>
+        <summary>Recently installed apps in the pile</summary>
+        <description>How many of the newest installed apps that are not pinned or running the apps icon's pile shows.</description>
+    </key>
+    <key type="i" name="app-grid-pile-frequent">
+        <range min="0" max="12"/>
+        <default>6</default>
+        <summary>Most used apps in the pile</summary>
+        <description>How many of the most used apps the apps icon's pile shows.</description>
+    </key>
     <key type="i" name="preferred-monitor">
         <default>0</default>
         <summary>Preferred monitor to dock</summary>

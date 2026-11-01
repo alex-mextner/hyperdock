@@ -25,7 +25,7 @@ function collect(actor, type, out = []) {
 }
 
 // the virtual pointer and the dock it drives
-function pointerFor(dock, h) {
+export function pointerFor(dock, h) {
   const seat = global.stage.context.get_backend().get_default_seat();
   const pointer = seat.create_virtual_device(Clutter.InputDeviceType.POINTER_DEVICE);
   const frame = () => h.sleep(24);
