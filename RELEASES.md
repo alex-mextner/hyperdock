@@ -44,6 +44,14 @@ Record of official releases for Hyperdock, aligned by GNOME Shell major version.
 Releases of the fork are cut from the `mac-tahoe` branch by pushing a tag; the
 `release` workflow (`.github/workflows/release.yml`) does the rest.
 
+### v1.4.0 (metadata `version` 101)
+
+* Folder stacks and the Recents/Downloads/Screenshots/Trash group render as piles; the popover groups items into date or kind batches.
+* Running-process dots share one baseline at the dock edge and follow the icon bounce, as do badge, counter and progress overlays.
+* The apps icon is a pile of apps on a translucent plate.
+* A finished or interrupted bounce leaves nothing translated on either axis; the animator is split into per-concern modules.
+* Over-complex functions split to satisfy the complexity lint (no behaviour change).
+
 ### Cutting a release
 
 1. Bump `version` in `package.json` (`MAJOR.MINOR.PATCH`) and `version` in `metadata.json`
