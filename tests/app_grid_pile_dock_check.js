@@ -46,6 +46,15 @@ test('a window class never matches a program name', () => {
   assert.ok(!same({ id: 'org.vendora.Editor.desktop', wmClass: 'VendorAEditor' }, { id: 'org.vendorb.Editor.desktop', wmClass: 'Editor' }));
 });
 
+test('the real Telegram: a pinned user launcher and the snap id share the window class', () => {
+  assert.ok(
+    same(
+      { id: 'org.telegram.desktop._edf924d6e93bafeaef1538c01df45ce4.desktop', wmClass: 'TelegramDesktop' },
+      { id: 'telegram-desktop_telegram-desktop.desktop', wmClass: 'TelegramDesktop' }
+    )
+  );
+});
+
 test('different apps do not match', () => {
   assert.ok(!same({ id: 'google-chrome.desktop', wmClass: 'Google-chrome' }, { id: 'chrome-hifjf-Default.desktop', wmClass: 'crx_hifjf' }));
   assert.ok(!same({ id: 'org.gnome.Nautilus.desktop' }, { id: 'org.gnome.Settings.desktop' }));
