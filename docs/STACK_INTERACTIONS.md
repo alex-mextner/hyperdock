@@ -689,6 +689,8 @@ These are now behaviour covered by the checks; wave-1 code relies on them.
 - **folderStackEntries**: `addFolder`, `removeFolder` and `moveFolder` return the same array when nothing changes; garbage entries are kept and never match; `addFolder` stores the path as given.
 - **stackMenuModel**: `ctx.kind` is ignored; Set as Wallpaper is enabled only for `count === 1`; `inTrash` swaps Move to Trash for Delete Permanently (`deletePermanently`); there is no Redo entry; the background Open in Files is `showInFiles` with no accel; every Sort/Group/View child has a boolean `checked`.
 
+**Known open findings (ticket [#78](https://github.com/alex-mextner/hyperdock/issues/78)):** a `text/uri-list` of file URIs next to browser markers is still classified as `files` (a web page can offer a file href); `latinKey` falls back to the keycode table for any non-letter key (Dvorak `;`, Bepo `.`); `settle` cannot tell an undo plan from a redo plan. Fix them before glue uses the modules; the contract text of 11.2, 11.5 and 11.6 changes with them.
+
 ## 12. Tests, settings and proofs
 
 ### 12.1 Pure checks (`make test`, no Shell)
