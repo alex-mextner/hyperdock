@@ -18,7 +18,7 @@ import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 
 const DEFAULT_REAL = ['gi://GLib', 'gi://Gio', 'gi://GObject'];
-const REPO_ROOT = GLib.path_get_dirname(
+export const REPO_ROOT = GLib.path_get_dirname(
   GLib.path_get_dirname(import.meta.url.replace(/^file:\/\//, ''))
 );
 
