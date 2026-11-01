@@ -186,6 +186,8 @@ export class BounceRun {
    */
   cancel() {
     this._cancelled = true;
+    // a finished bounce has put its icon at rest already: nothing to look up or touch
+    if (this._ended) return;
     const target = findTarget(this._animator, this._appId);
     if (target[1]) [this._container, this._appwell] = target;
     this._release();

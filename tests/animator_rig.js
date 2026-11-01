@@ -433,6 +433,7 @@ export class FakeTimer {
       _loop: false,
       _timer: this,
       _frames: [...array],
+      ...(settings || {}),
       onUpdate: (s, dt) => {
         s._time += dt;
         s._currentFrames = s._frames.filter(
@@ -452,7 +453,6 @@ export class FakeTimer {
         }
         s._func(s);
       },
-      ...(settings || {}),
     };
     this.subscribed.add(obj);
     return obj;

@@ -216,6 +216,18 @@ for (const [position, timerFirst] of POSITIONS.flatMap((p) => [[p, true], [p, fa
   }
 
   {
+    // a finished bounce is not touched again when the dock's timers are cancelled later
+    const r = await newRig(position, timerFirst);
+    r.animator.bounceIcon(target(r), 1);
+    tick(r, 120);
+    check(r.timer.subscribed.size === 0, L('a finished bounce is off the timer'));
+    target(r).destroy();
+    disposedWrites.length = 0;
+    r.animator.cancelBounces();
+    check(disposedWrites.length === 0, L('cancelling after a finished bounce touches no actor'));
+  }
+
+  {
     // a bounce frequency outside the list, or no hops: nothing to run, nothing left on the timer
     const r = await newRig(position, timerFirst);
     r.dock.extension.animation_bounce_frequency = 7;
