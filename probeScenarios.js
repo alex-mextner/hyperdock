@@ -15,6 +15,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as Compat from './compat.js';
 import { layoutScenario, widthScenario } from './layoutScenarios.js';
 import { stacksScenario } from './stackScenarios.js';
+import { stackOpenScenario } from './stackOpenScenarios.js';
 import { appGridPileScenario } from './appGridPileScenarios.js';
 
 let started = false;
@@ -134,6 +135,7 @@ const SCENARIOS = {
   layout: (ext) => layoutScenario(ext, helpers),
   width: (ext) => widthScenario(ext, helpers),
   stacks: (ext) => stacksScenario(ext, helpers),
+  stackopen: (ext) => stackOpenScenario(ext, helpers),
   appgrid: (ext) => appGridPileScenario(ext, helpers),
 };
 
