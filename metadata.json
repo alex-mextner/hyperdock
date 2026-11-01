@@ -7,5 +7,5 @@
   "uuid": "hyperdock@alex-mextner.github.com",
   "schema-id": "org.gnome.shell.extensions.hyperdock",
   "gettext-domain": "hyperdock",
-  "version": 101
+  "version": 102
 }
