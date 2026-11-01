@@ -21,6 +21,7 @@ import * as Fav from 'resource:///org/gnome/shell/ui/appFavorites.js';
 import * as Compat from './compat.js';
 import { StackPile } from './stackPile.js';
 import { iconFileOf } from './stackSources.js';
+import { appKeys, dockKeys } from './appGridPileDock.js';
 import { selectPileApps } from './appGridPileSelection.js';
 import {
   mergeFirstSeen,
@@ -194,9 +195,24 @@ export class AppGridPile {
 
   // the running apps the dock lists: none with "favorites only", and with
   // "isolate workspaces" only those with a window on this workspace
-  _runningIds() {
+  _runningApps() {
     if (this.extension.favorites_only) return [];
-    return runningApps(this.extension.isolate_workspaces).map((app) => app.get_id());
+    return runningApps(this.extension.isolate_workspaces);
+  }
+
+  // The window class a launcher declares: how the Shell matches windows to the
+  // app, so a second id of the same program shares it.
+  _wmClassOf(app) {
+    return app?.get_app_info()?.get_startup_wm_class?.() ?? '';
+  }
+
+  // Every app the dock shows as an item: the pinned ones, the running ones and
+  // the stopped ones in the Recents stack (its icon and its popover list them).
+  // The dock's own *-hyperdock.desktop entries are no apps (isHelperId).
+  _dockApps() {
+    const pinned = Fav.getAppFavorites().getFavorites();
+    const recents = this.extension.recentDockApps?.() ?? [];
+    return [...pinned, ...this._runningApps(), ...recents];
   }
 
   // the apps to draw and their icon files, in pile order, top first
@@ -210,14 +226,21 @@ export class AppGridPile {
       if (file) iconFiles.set(id, file);
       return !!file;
     };
+    const keysOf = (id) => appKeys(id, this._wmClassOf(appSystem.lookup_app(id)));
+    const inDock = dockKeys(
+      this._dockApps().map((app) => ({
+        id: app.get_id(),
+        wmClass: this._wmClassOf(app),
+      }))
+    );
     const selection = selectPileApps({
       mostUsed: Shell.AppUsage.get_default()
         .get_most_used()
         .map((app) => app.get_id()),
       installed: this._installedApps(),
-      favorites: Compat.getFavoriteAppIds(Fav.getAppFavorites()),
-      running: this._runningIds(),
+      dockKeys: inDock,
       usable,
+      keysOf,
       frequentCount: this.extension.app_grid_pile_frequent,
       recentCount: this.extension.app_grid_pile_recent,
     });

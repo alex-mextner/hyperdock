@@ -49,6 +49,9 @@ function checkSelection(ext, h, label) {
     recent.length <= ext.app_grid_pile_recent && !recent.some((id) => favorites.includes(id)),
     { recent, favorites }
   );
+  const dockIds = [...favorites, ...ext.appGridPile._dockApps().map((app) => app.get_id())];
+  h.check(S, `${label}: no app of the dock in either group`, !ids.some((id) => dockIds.includes(id)), { ids, dockIds });
+  h.check(S, `${label}: the groups share no app`, !frequent.some((id) => recent.includes(id)), { frequent, recent });
   h.check(S, `${label}: at most ${ext.app_grid_pile_frequent} most used`, frequent.length <= ext.app_grid_pile_frequent, frequent);
 }
 
@@ -83,6 +86,11 @@ async function favoritesFollow(ext, h) {
   settings.set_strv('favorite-apps', [...favoriteIds(), pinned]);
   const gone = await until(h, () => !ext.appGridPile.selection.recent.includes(pinned), 15);
   h.check(S, 'pinning a recent app takes it out of the recent ones', gone, { pinned });
+  const used = ext.appGridPile.selection.frequent[0];
+  if (!used) return h.check(S, 'a most used app exists to pin', false);
+  settings.set_strv('favorite-apps', [...favoriteIds(), used]);
+  const usedGone = await until(h, () => !ext.appGridPile.selection.frequent.includes(used), 15);
+  h.check(S, 'pinning a most used app takes it out of the most used ones', usedGone, { used });
 }
 
 async function installFollows(ext, h) {

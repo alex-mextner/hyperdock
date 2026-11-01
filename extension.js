@@ -135,7 +135,7 @@ const REACTIONS = Object.freeze({
   'favorites-only': ['app_grid_pile', 'layout', 'animate_refresh'],
   'keyboard-focus': ['keyboard_focus'],
   'hotkeys-overlay': ['hotkeys_overlay'],
-  'recent-apps-count': ['recent_apps', 'layout', 'animate_refresh'],
+  'recent-apps-count': ['recent_apps', 'app_grid_pile', 'layout', 'animate_refresh'],
   'recents-stack-view': ['recent_apps', 'layout', 'animate_refresh'],
   'recents-stack-display': ['recent_apps', 'layout', 'animate_refresh'],
   'screenshots-icon': ['folder_stacks_setup', 'layout', 'animate_refresh'],
@@ -1045,13 +1045,15 @@ export default class HyperdockExt extends Extension {
   // not running (a running app already has its own icon), launchable
   recentDockApps() {
     let count = this.recent_apps_count;
-    if (!count || !this._settings || !this._appSystem) return [];
+    // the pile asks before _addEvents() has taken the app system
+    const appSystem = this._appSystem ?? Shell.AppSystem.get_default();
+    if (!count || !this._settings) return [];
     let favorites = Fav.getAppFavorites().getFavoriteMap();
     return pickRecents(this._settings.get_strv('recent-apps'), {
       count,
       isFavorite: (id) => id in favorites,
       resolve: (id) => {
-        let app = this._appSystem.lookup_app(id);
+        let app = appSystem.lookup_app(id);
         let info = app?.get_app_info();
         if (!info || app.state !== Shell.AppState.STOPPED) return null;
         return isLaunchable({
@@ -1069,6 +1071,7 @@ export default class HyperdockExt extends Extension {
     if (!this._settings) return;
     this._settings.set_strv('recent-apps', []);
     this.services?.refreshRecentsStack();
+    this.appGridPile?.scheduleRefresh();
   }
 
   _removeEvents() {
@@ -1151,7 +1154,7 @@ export default class HyperdockExt extends Extension {
   _onAppsChanged() {
     // a closed, launched or (un)pinned app changes what Recents lists
     this.services?.refreshRecentsStack();
-    // pinned or running apps leave the pile's recent ones; usage moves its order
+    // pinned, running and Recents apps leave the pile; usage moves its order
     this.appGridPile?.scheduleRefresh();
     let listeners = [...this.listeners];
     listeners.forEach((l) => {
@@ -1175,6 +1178,8 @@ export default class HyperdockExt extends Extension {
   }
 
   _onWindowsChanged() {
+    // with isolated workspaces the running apps the dock lists follow the workspace
+    this.appGridPile?.scheduleRefresh();
     this.docks?.forEach((dock) => dock._onWindowsChanged());
   }
 
