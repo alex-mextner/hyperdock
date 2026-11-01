@@ -11,6 +11,7 @@ import { smoothScaling } from './textureFilters.js';
 import { IconNormalizer } from './iconNormalizer.js';
 import { DockItemDotsOverlay, DockItemBadgeOverlay } from './dockItems.js';
 import { live } from './probe.js';
+import { outward } from './iconGeometry.js';
 import { animatedEdgeDistance } from './indicatorSpacing.js';
 import {
   advancePresence,
@@ -255,19 +256,22 @@ export let Animator = class {
     });
     layout.fitSeparators(thickness + 0.5);
 
+    // the platter reaches deeper towards the screen edge than the dash does
+    let [ox, oy] = outward(dock._position);
+    let lean = dock._platterCentreShift || 0;
     layout.sepActors.forEach((actor, j) => {
       let size = layout.sepFitSize[j];
       // across the dock the line stays centred on the platter (its CENTER
       // alignment in the dash slot, see Dock._inspectIcon)
       let shift = layout.sepFitCenter[j] - layout.sepRest[j];
       if (vertical) {
-        actor.translationX = 0;
+        actor.translationX = ox * lean;
         actor.translationY = shift;
         actor.width = crossSize;
         actor.height = size;
       } else {
         actor.translationX = shift;
-        actor.translationY = 0;
+        actor.translationY = oy * lean;
         actor.width = size;
         actor.height = crossSize;
       }

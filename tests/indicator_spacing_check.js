@@ -17,6 +17,7 @@ import {
   platterPadding,
   slideWithoutLift,
   animatedEdgeDistance,
+  platterCentreShift,
 } from '../indicatorSpacing.js';
 
 let failures = 0;
@@ -164,6 +165,15 @@ check(artToItemEdge(40, 60) === 10 + ((1 - CONTENT_TARGET) / 2) * 40, 'a small i
   check(animatedEdgeDistance(-10 + 13.044, 13.044) === 13.044, 'a negative edge distance never eats the indicator lift while animating');
   check(animatedEdgeDistance(30, 13) === 30, 'a positive edge distance is kept');
   check(animatedEdgeDistance(-4) === 0, 'without growth a negative distance is zero');
+  {
+    // separators stay centred on the platter: it spans [-1.5 pad, item + growth] around the items
+    const pad = platterPadding(32, 0.5, 1.5);
+    const growth = outerGrowth(48, 56, pad);
+    const inner = OUTER_PADDING_SHARE * pad;
+    const centre = (-inner + (56 + growth)) / 2;
+    check(Math.abs(centre - 56 / 2 - platterCentreShift(growth, pad)) < EPS, 'separators are moved by the platter centre shift to stay centred');
+    check(platterCentreShift(OUTER_PADDING_SHARE * pad, pad) === 0, 'no shift when the platter keeps its own padding');
+  }
   check(platterPadding(48, undefined, 1.5) === 0, 'no dock_padding setting means no padding');
   check(Math.abs(platterPadding(48, 0.5, 1.5) - 3.6) < EPS, 'platter padding = 0.1 x icon x dock_padding x scale');
 }

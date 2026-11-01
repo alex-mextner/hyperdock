@@ -105,3 +105,12 @@ export function slideWithoutLift(position, translation, growth) {
 export function animatedEdgeDistance(distance, growth = 0) {
   return Math.max(distance, growth);
 }
+
+/**
+ * How far the platter's centre moved towards the screen edge, px: it reaches
+ * `growth` past the items instead of its own outward padding. Things that sit
+ * centred on the platter (separators) are moved by this much.
+ */
+export function platterCentreShift(growth, platterPad) {
+  return (growth - OUTER_PADDING_SHARE * platterPad) / 2;
+}

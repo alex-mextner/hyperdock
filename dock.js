@@ -26,7 +26,7 @@ import { get_distance_sqr, get_distance, isInRect, isOverlapRect } from './utils
 import { syncOpenAtLogin, hideOpenAtLogin } from './openAtLogin.js';
 import { orderExtraIcons, syncFolderStacks, syncRecentsStack } from './stackDock.js';
 import { computeIconMetrics } from './iconMetrics.js';
-import { outerGrowth, platterPadding } from './indicatorSpacing.js';
+import { outerGrowth, platterCentreShift, platterPadding } from './indicatorSpacing.js';
 import {
   filterDashRunningApps,
   onActiveWorkspace,
@@ -1563,11 +1563,9 @@ export let Dock = GObject.registerClass(
 
       // the platter reaches past the items far enough for the running dots;
       // the dash is that much further from the screen edge (indicatorSpacing.js)
-      this._outerGrowth = outerGrowth(
-        iconSize * scaleFactor,
-        itemSize,
-        platterPadding(iconSize, this.extension.dock_padding, scaleFactor)
-      );
+      const platterPad = platterPadding(iconSize, this.extension.dock_padding, scaleFactor);
+      this._outerGrowth = outerGrowth(iconSize * scaleFactor, itemSize, platterPad);
+      this._platterCentreShift = platterCentreShift(this._outerGrowth, platterPad);
       this._edge_distance += this._outerGrowth;
 
       //! check with multi-monitor and scaled displays
