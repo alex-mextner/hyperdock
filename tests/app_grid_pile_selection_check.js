@@ -2,6 +2,7 @@
 // shows (pure logic, no GNOME Shell): counts, exclusions, order, stability.
 // Exits 1 on failure.
 import { assert, createSuite } from './mini_test.js';
+import { dockKeys } from '../appGridPileDock.js';
 import {
   interleave,
   isHelperId,
@@ -16,12 +17,12 @@ const ids = (prefix, n) => Array.from({ length: n }, (_, i) => `${prefix}${i + 1
 const installedApps = (n) =>
   ids('n', n).map((id, i) => ({ id, time: 1000 - i }));
 
-function select(overrides = {}) {
+// dock: the ids of every app the dock shows (pinned, running, in Recents)
+function select({ dock = [], ...overrides } = {}) {
   return selectPileApps({
-    mostUsed: ids('f', 10),
+    mostUsed: ids('f', 12),
     installed: installedApps(10),
-    favorites: [],
-    running: [],
+    dockKeys: dockKeys(dock.map((id) => ({ id }))),
     usable: () => true,
     frequentCount: 6,
     recentCount: 3,
@@ -50,20 +51,73 @@ test('most used keep the Shell order, newest installed come newest first', () =>
   assert.deepEqual(recent, ['new.desktop', 'mid.desktop', 'old.desktop']);
 });
 
-test('recent installs skip favorites and running apps', () => {
-  const { recent } = select({
-    favorites: ['n1.desktop'],
-    running: ['n2.desktop'],
-  });
+test('recent installs skip every app in the dock', () => {
+  const { recent } = select({ dock: ['n1.desktop', 'n2.desktop'] });
   assert.deepEqual(recent, ['n3.desktop', 'n4.desktop', 'n5.desktop']);
 });
 
-test('a most used app that is pinned or running still shows', () => {
-  const { frequent } = select({
-    favorites: ['f1.desktop'],
-    running: ['f2.desktop'],
+test('most used apps in the dock leave the pile, the next most used fill in', () => {
+  const { frequent } = select({ dock: ['f1.desktop', 'f3.desktop'] });
+  assert.deepEqual(frequent, ['f2.desktop', 'f4.desktop', 'f5.desktop', 'f6.desktop', 'f7.desktop', 'f8.desktop']);
+  assert.equal(frequent.length, 6, 'still six');
+});
+
+test('exact counts 3 + 6 when the dock takes apps from both lists', () => {
+  const dock = ['f1.desktop', 'f2.desktop', 'n1.desktop', 'n2.desktop', 'n3.desktop'];
+  const { frequent, recent, order } = select({ dock });
+  assert.equal(frequent.length, 6);
+  assert.equal(recent.length, 3);
+  assert.equal(order.length, 9);
+  assert.ok(order.every((id) => !dock.includes(id)), 'a dock app leaked');
+});
+
+test('a dock app under another id of the same app leaves the pile', () => {
+  const { frequent, recent } = select({
+    mostUsed: ['firefox.desktop', 'f1.desktop', 'telegram-desktop_telegram-desktop.desktop', 'f2.desktop'],
+    installed: [
+      { id: 'org.mozilla.firefox.desktop', time: 9000 },
+      { id: 'telegram-desktop_telegram-desktop.desktop', time: 8000 },
+      ...installedApps(3),
+    ],
+    dock: ['org.mozilla.firefox.desktop', 'telegram-desktop.desktop'],
+    frequentCount: 4,
   });
-  assert.deepEqual(frequent, ids('f', 6));
+  assert.deepEqual(frequent, ['f1.desktop', 'f2.desktop']);
+  assert.deepEqual(recent, ids('n', 3));
+});
+
+test('keysOf lets a launcher declare a window class that matches the dock', () => {
+  const wm = { 'a.desktop': 'Shared', 'b.desktop': 'shared' };
+  const { frequent } = select({
+    mostUsed: ['a.desktop', 'f1.desktop'],
+    dockKeys: dockKeys([{ id: 'b.desktop', wmClass: 'shared' }]),
+    keysOf: (id) => [id.toLowerCase(), (wm[id] ?? '').toLowerCase()].filter(Boolean).map((key) => `w:${key}`),
+    frequentCount: 2,
+  });
+  assert.deepEqual(frequent, ['f1.desktop']);
+});
+
+test('a short alias and a same-named other app in both groups', () => {
+  const { frequent, recent } = select({
+    mostUsed: ['vlc_vlc.desktop', 'org.example.Calculator.desktop', 'f1.desktop'],
+    installed: [
+      { id: 'vlc.desktop', time: 9000 },
+      { id: 'org.example.Calculator.desktop', time: 8000 },
+      ...installedApps(3),
+    ],
+    dock: ['org.videolan.VLC.desktop', 'org.gnome.Calculator.desktop'],
+    frequentCount: 3,
+  });
+  assert.deepEqual(frequent, ['org.example.Calculator.desktop', 'f1.desktop']);
+  assert.ok(!recent.includes('vlc.desktop'), 'vlc in the dock under another id');
+});
+
+test('two ids of one app in the lists count once', () => {
+  const { frequent } = select({
+    mostUsed: ['firefox.desktop', 'org.mozilla.firefox.desktop', 'f1.desktop'],
+    frequentCount: 2,
+  });
+  assert.deepEqual(frequent, ['firefox.desktop', 'f1.desktop']);
 });
 
 test('recent installs never repeat a most used app', () => {
