@@ -3,6 +3,7 @@
 // (autohide, edge distance), the platter behind the icons and the struts that
 // reserve the screen space. No Shell imports: the dock is passed in.
 import { Vector } from './vector.js';
+import { outward } from './iconGeometry.js';
 import { fadeInStep } from './animatorMath.js';
 
 /** Fades a newly shown dock in; returns whether it is still fading. */
@@ -33,9 +34,13 @@ export function resolvePointer(dock, pointer) {
   let result = pointer;
   if (dock.extension.simulated_pointer) result = [...dock.extension.simulated_pointer];
   if (dock.simulated_pointer) result = [...dock.simulated_pointer];
-  // disable icon scale animation upon hovering an item
+  // disable icon scale animation upon hovering an item: the pointer is taken
+  // one icon inwards, away from the screen edge the dock sits on
   if (listIsOpenOnHoveredIcon(dock)) {
-    result[1] -= dock._iconSize * dock._scaleFactor;
+    const [ox, oy] = outward(dock._position);
+    const shift = dock._iconSize * dock._scaleFactor;
+    result[0] -= ox * shift;
+    result[1] -= oy * shift;
   }
   return result;
 }
@@ -92,14 +97,16 @@ export function slideDash(dock, run) {
 }
 
 // the struts reserve the space the dock takes along the screen edge
-function updateStruts(dock, run) {
+export function updateStruts(dock, run) {
   const { vertical, edge, iconSize, scaleFactor, edgeDistance } = run;
   const bg = dock._background;
   const struts = dock.struts;
   const grow = iconSize * 0.2 * scaleFactor;
   // the dash sits `edgeDistance` off the edge, the platter reaches the
-  // lift further (dock._outerGrowth): it is the platter the struts follow
-  const gap = edgeDistance - (dock._outerGrowth || 0);
+  // lift further (dock._outerGrowth): it is the platter the struts follow.
+  // Without a platter (one icon) the lifted dash is all there is to reserve.
+  const drawn = bg.opacity > 0 && bg.width > 0 && bg.height > 0;
+  const gap = edgeDistance - (drawn ? dock._outerGrowth || 0 : 0);
   const autohide = dock.extension.autohide_dash;
   if (vertical) {
     struts.width = bg.width + grow + gap;

@@ -87,8 +87,11 @@ frame, for any magnification** - by construction, not through an offset.
 
 Icons ease towards their layout, so the gap that is really drawn can be
 narrower for a few frames. `Animator._placeSeparators()` therefore centres the
-line in the gap between the icon rects as drawn this frame
-(`DockLayout.fitSeparators()`): the line is never wider than that gap.
+line in the gap between the icons' art as drawn this frame
+(`DockLayout.fitSeparators()`): the line is never wider than that gap. The art
+is the `CONTENT_TARGET` share of each icon's slot (normalization keeps it
+there), not the texture rect: transparent padding of an off-centre icon never
+takes room from the line.
 
 The same gap is the **right-click hit area**: `DockLayout.slotStart/slotEnd`
 (stage coordinates, along the dock) hold the span between the previous icon

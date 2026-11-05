@@ -24,6 +24,7 @@ export const SEPARATOR_CLASS = 'dash-separator';
 
 const ICON = 0;
 const SEPARATOR = 1;
+const SKIP = -1;
 
 // a slot moving by more than this many item widths between two frames is a
 // jump of the whole dock, not an item coming or going (see measure())
@@ -52,6 +53,21 @@ export function getScale(u, xm, R, M, type = 0) {
 
 function isNumber(v) {
   return typeof v === 'number' && Number.isFinite(v);
+}
+
+// how open an icon's slot is (0..1); anything unmeasured counts as open
+function openness(v) {
+  return Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 1;
+}
+
+// where an item's slot starts along the axis
+function candidateStart(item, kind, pos, vertical) {
+  const start = vertical ? pos[1] : pos[0];
+  if (kind !== SEPARATOR) return start;
+  // it is shifted along the dock by fitSeparators(): that shift is
+  // not part of its slot in the dash
+  const shift = vertical ? item.translationY : item.translationX;
+  return start - (isNumber(shift) ? shift : 0);
 }
 
 export class DockLayout {
@@ -101,6 +117,13 @@ export class DockLayout {
     this.settled = false;
 
     this._firstSecondary = 0;
+    // measure()/compute() hand-overs between their helpers
+    this._waiting = false;
+    this._vetNodes = 0;
+    this._vetIcons = 0;
+    this._vetSeps = 0;
+    this._unpackedL = 0;
+    this._leftEdge = 0;
     // measure() candidates before separators are vetted
     this._cItem = [];
     this._cKind = [];
@@ -148,38 +171,73 @@ export class DockLayout {
       this._lastRest = new WeakMap();
       this._lastVertical = vertical;
     }
-    // a never-seen item is waiting for its allocation (see below)
-    let waiting = false;
+    // a never-seen item is waiting for its allocation (see _candidateKind)
+    this._waiting = false;
+    const c = this._collectCandidates(items, vertical, withSeparators);
+    this._cItem.length = c;
+    this._vetSeparators(c);
+
+    const n = this._vetNodes;
+    const icons = this._vetIcons;
+    const seps = this._vetSeps;
+    const steady = this._trackDrift(icons);
+
+    // The slots' own extent along the dock, and whether they held still since
+    // the last measure. The platter is drawn from these (not from the live
+    // size of the Dash, which can already be final while the slots are still
+    // those of an intermediate allocation), so it moves with the icons.
+    this.spanStart = n > 0 ? this.nodeRestStart[0] : 0;
+    this.spanEnd = n > 0 ? this.nodeRestEnd[n - 1] : 0;
+    this.settled = steady && !this._waiting;
+
+    this.nodeCount = n;
+    this.iconCount = icons;
+    this.sepCount = seps;
+    this._truncateMeasured(n, icons, seps);
+    this.peak = -1;
+    this.isWithin = false;
+    this._cItem.length = 0;
+    return icons;
+  }
+
+  // Kind of an item that can take part this frame, or SKIP. Flags
+  // `_waiting` for an icon that has no allocation yet.
+  _candidateKind(item, withSeparators) {
+    if (!item) return SKIP;
+    if (item._cls === SEPARATOR_CLASS) {
+      return withSeparators && item.visible && item.mapped ? SEPARATOR : SKIP;
+    }
+    if (!item._icon) return SKIP;
+    if (!this._lastRest.has(item) && item.has_allocation?.() === false) {
+      // never seen and not allocated yet: its "position" is its parent's
+      // origin; wait a frame instead of letting the icon fly in from there.
+      // The Dash already counts it, so the slots are not steady either.
+      this._waiting = true;
+      return SKIP;
+    }
+    return ICON;
+  }
+
+  // Fills the _c* candidate arrays from this frame's measurements; returns
+  // how many were kept.
+  _collectCandidates(items, vertical, withSeparators) {
     let c = 0;
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
-      if (!item) continue;
-      let kind = ICON;
-      if (item._cls === SEPARATOR_CLASS) {
-        if (!withSeparators || !item.visible || !item.mapped) continue;
-        kind = SEPARATOR;
-      } else if (!item._icon) {
-        continue;
-      } else if (!this._lastRest.has(item) && item.has_allocation?.() === false) {
-        // never seen and not allocated yet: its "position" is its parent's
-        // origin; wait a frame instead of letting the icon fly in from there.
-        // The Dash already counts it, so the slots are not steady either.
-        waiting = true;
-        continue;
-      }
+      const kind = this._candidateKind(item, withSeparators);
+      if (kind === SKIP) continue;
 
+      // an icon the dock knows but cannot measure (the Dash is being rebuilt
+      // off the stage) leaves a hole in the slots: they are not settled, so
+      // nothing learns the Dash's padding from this frame
       const pos = item.get_transformed_position();
-      if (!pos || !isNumber(pos[0]) || !isNumber(pos[1])) continue;
       const size = vertical ? item.height : item.width;
-      if (!isNumber(size)) continue;
-
-      let start = vertical ? pos[1] : pos[0];
-      if (kind === SEPARATOR) {
-        // it is shifted along the dock by fitSeparators(): that shift is
-        // not part of its slot in the dash
-        const shift = vertical ? item.translationY : item.translationX;
-        start -= isNumber(shift) ? shift : 0;
+      if (!pos || !isNumber(pos[0]) || !isNumber(pos[1]) || !isNumber(size)) {
+        if (kind === ICON) this._waiting = true;
+        continue;
       }
+
+      const start = candidateStart(item, kind, pos, vertical);
       this._cItem[c] = item;
       this._cKind[c] = kind;
       this._cStart[c] = start;
@@ -187,9 +245,12 @@ export class DockLayout {
       this._cSecondary[c] = vertical ? pos[0] : pos[1];
       c++;
     }
-    this._cItem.length = c;
+    return c;
+  }
 
-    // vet the separators: one only between two icons
+  // vet the separators: one only between two icons. Leaves the node, icon
+  // and separator counts in _vetNodes/_vetIcons/_vetSeps.
+  _vetSeparators(c) {
     let n = 0;
     let icons = 0;
     let seps = 0;
@@ -198,11 +259,7 @@ export class DockLayout {
       if (this._cKind[i] === SEPARATOR) {
         if (!prevIsIcon) continue;
         prevIsIcon = false;
-        this.sepActors[seps] = this._cItem[i];
-        this.sepNode[seps] = n;
-        this.sepPrev[seps] = icons - 1;
-        this.sepNext[seps] = icons;
-        this.sepRest[seps] = (this._cStart[i] + this._cEnd[i]) / 2;
+        this._keepSeparator(i, seps, n, icons);
         seps++;
       } else {
         prevIsIcon = true;
@@ -221,14 +278,27 @@ export class DockLayout {
       n--;
       seps--;
     }
+    this._vetNodes = n;
+    this._vetIcons = icons;
+    this._vetSeps = seps;
+  }
 
-    // The Dash re-lays itself out when an item comes or goes (centred, so
-    // every slot moves): report how far each icon's slot moved since it was
-    // last measured, so the caller can keep what is drawn where it was and
-    // let it glide, instead of showing the jump. A move of more than a few
-    // item widths is no item coming or going but the whole dock being put
-    // somewhere else (another monitor, a geometry change): that is a jump,
-    // not a glide across the screen.
+  _keepSeparator(i, seps, n, icons) {
+    this.sepActors[seps] = this._cItem[i];
+    this.sepNode[seps] = n;
+    this.sepPrev[seps] = icons - 1;
+    this.sepNext[seps] = icons;
+    this.sepRest[seps] = (this._cStart[i] + this._cEnd[i]) / 2;
+  }
+
+  // The Dash re-lays itself out when an item comes or goes (centred, so
+  // every slot moves): report how far each icon's slot moved since it was
+  // last measured, so the caller can keep what is drawn where it was and
+  // let it glide, instead of showing the jump. A move of more than a few
+  // item widths is no item coming or going but the whole dock being put
+  // somewhere else (another monitor, a geometry change): that is a jump,
+  // not a glide across the screen. Returns whether every slot held still.
+  _trackDrift(icons) {
     let steady = true;
     for (let k = 0; k < icons; k++) {
       const node = this.iconNode[k];
@@ -242,18 +312,10 @@ export class DockLayout {
       this._lastRest.set(this.icons[k], now);
     }
     this.iconDrift.length = icons;
+    return steady;
+  }
 
-    // The slots' own extent along the dock, and whether they held still since
-    // the last measure. The platter is drawn from these (not from the live
-    // size of the Dash, which can already be final while the slots are still
-    // those of an intermediate allocation), so it moves with the icons.
-    this.spanStart = n > 0 ? this.nodeRestStart[0] : 0;
-    this.spanEnd = n > 0 ? this.nodeRestEnd[n - 1] : 0;
-    this.settled = steady && !waiting;
-
-    this.nodeCount = n;
-    this.iconCount = icons;
-    this.sepCount = seps;
+  _truncateMeasured(n, icons, seps) {
     this.icons.length = icons;
     this.iconNode.length = icons;
     this.sepActors.length = seps;
@@ -264,10 +326,6 @@ export class DockLayout {
     this.nodeKind.length = n;
     this.nodeRestStart.length = n;
     this.nodeRestEnd.length = n;
-    this.peak = -1;
-    this.isWithin = false;
-    this._cItem.length = 0;
-    return icons;
   }
 
   // Lays out the nodes measure() kept. `p`:
@@ -281,30 +339,66 @@ export class DockLayout {
   compute(p) {
     const n = this.nodeCount;
     if (n === 0) {
-      this.iconDelta.length = 0;
-      this.iconScale.length = 0;
-      this.nodeCenter.length = 0;
-      this.nodeSize.length = 0;
-      this.nodeScale.length = 0;
-      this.nodeDelta.length = 0;
+      this._clearLayout();
       return false;
     }
 
-    const G = NUM_GHOSTS;
-    const T = n + 2 * G;
+    const T = n + 2 * NUM_GHOSTS;
     const { iconSize, padding, separatorSize, threshold, scaleAtMax } = p;
     const curve = p.curveType ?? 0;
+    const ghostCell = iconSize + padding;
+
+    const totalStatic = this._fillStaticCells(T, iconSize, separatorSize, padding);
+    const restStart = this.nodeRestStart[0];
+    const restL = this.nodeRestEnd[n - 1] - restStart;
+
+    const within = this._pointerWithin(p, restStart, restL, ghostCell);
+    this.isWithin = within;
+    const xm = this._pointerInCells(
+      p.pointerPrimary,
+      restStart,
+      restL,
+      ghostCell,
+      padding,
+      totalStatic
+    );
+    this._applyMagnification(T, within, xm, threshold, scaleAtMax, curve);
+
+    const peak =
+      within && !p.noAnimation ? this._peakIcon(xm, threshold, ghostCell) : -1;
+    this.peak = peak;
+
+    const share = this._gapShare(
+      T,
+      peak >= 0 ? 1.0 : 0.0,
+      totalStatic / 2,
+      padding,
+      threshold,
+      scaleAtMax,
+      curve
+    );
+    const realActiveL = this._pack(n, padding + share);
+    this._writeNodes(n, (restL - realActiveL) / 2, restStart);
+    return true;
+  }
+
+  _clearLayout() {
+    this.iconDelta.length = 0;
+    this.iconScale.length = 0;
+    this.nodeCenter.length = 0;
+    this.nodeSize.length = 0;
+    this.nodeScale.length = 0;
+    this.nodeDelta.length = 0;
+  }
+
+  // static (unmagnified) cells: node width plus its padding. Returns their
+  // total; the part taken by real nodes is left in _unpackedL.
+  _fillStaticCells(T, iconSize, separatorSize, padding) {
+    const G = NUM_GHOSTS;
+    const n = this.nodeCount;
     const kind = this.nodeKind;
     const cell = this._cell;
     const base = this._base;
-    const iconLike = this._iconLike;
-    const staticCenter = this._staticCenter;
-    const width = this._width;
-    const scale = this._scale;
-    const pres = this._pres;
-    const ghostCell = iconSize + padding;
-
-    // static (unmagnified) cells: node width plus its padding
     let totalStatic = 0;
     let unpackedL = 0;
     let iconIdx = 0;
@@ -313,83 +407,92 @@ export class DockLayout {
       const real = k >= 0 && k < n;
       const sep = real && kind[k] === SEPARATOR;
       base[i] = sep ? separatorSize : iconSize;
-      iconLike[i] = !sep;
+      this._iconLike[i] = !sep;
       cell[i] = base[i] + padding;
-      staticCenter[i] = totalStatic + cell[i] / 2;
+      this._staticCenter[i] = totalStatic + cell[i] / 2;
       totalStatic += cell[i];
       if (real) unpackedL += cell[i];
       // how open the icon's slot is (0..1); ghosts and separators are open
-      let open = 1;
-      if (real && !sep) {
-        const v = this.iconPresence[iconIdx++];
-        open = Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 1;
-      }
-      pres[i] = open;
+      this._pres[i] = real && !sep ? openness(this.iconPresence[iconIdx++]) : 1;
     }
+    this._unpackedL = unpackedL;
+    return totalStatic;
+  }
 
-    const restStart = this.nodeRestStart[0];
-    const restL = this.nodeRestEnd[n - 1] - restStart;
-
-    // is the pointer over the dock (with room for the ghost nodes)?
+  // is the pointer over the dock (with room for the ghost nodes)?
+  _pointerWithin(p, restStart, restL, ghostCell) {
+    const iconSize = p.iconSize;
     const pointer = p.pointerPrimary;
     const secondaryDist = Math.abs(
       p.pointerSecondary - (this._firstSecondary + iconSize / 2)
     );
     const withinSecondary = secondaryDist < iconSize * 2.0;
     const withinPrimary =
-      pointer >= restStart - G * ghostCell &&
-      pointer <= restStart + restL + G * ghostCell;
-    const within = !p.suppressHover && withinPrimary && withinSecondary;
-    this.isWithin = within;
+      pointer >= restStart - NUM_GHOSTS * ghostCell &&
+      pointer <= restStart + restL + NUM_GHOSTS * ghostCell;
+    return !p.suppressHover && withinPrimary && withinSecondary;
+  }
 
-    // pointer in the coordinates of the static cells, centred on the dock
-    const unwarpedStart = restStart - (unpackedL - restL) / 2;
-    const firstRealStaticLeft = G * ghostCell + padding / 2;
-    const xm = Math.max(
+  // pointer in the coordinates of the static cells, centred on the dock
+  _pointerInCells(pointer, restStart, restL, ghostCell, padding, totalStatic) {
+    const unwarpedStart = restStart - (this._unpackedL - restL) / 2;
+    const firstRealStaticLeft = NUM_GHOSTS * ghostCell + padding / 2;
+    return Math.max(
       0,
       Math.min(totalStatic, pointer - unwarpedStart + firstRealStaticLeft)
     );
+  }
 
+  _applyMagnification(T, within, xm, threshold, scaleAtMax, curve) {
+    const scale = this._scale;
     for (let i = 0; i < T; i++) {
       scale[i] =
-        within && iconLike[i]
-          ? getScale(staticCenter[i], xm, threshold, scaleAtMax, curve)
+        within && this._iconLike[i]
+          ? getScale(this._staticCenter[i], xm, threshold, scaleAtMax, curve)
           : 1.0;
-      width[i] = base[i] * scale[i] * pres[i];
+      this._width[i] = this._base[i] * scale[i] * this._pres[i];
     }
+  }
 
-    // the icon under the pointer
+  // the icon under the pointer (its index among icons), or -1
+  _peakIcon(xm, threshold, ghostCell) {
     let peak = -1;
-    if (within && !p.noAnimation) {
-      let minDist = Infinity;
-      let icon = 0;
-      for (let k = 0; k < n; k++) {
-        if (kind[k] === SEPARATOR) continue;
-        const dist = Math.abs(staticCenter[k + G] - xm);
-        if (dist < minDist) {
-          minDist = dist;
-          peak = icon;
-        }
-        icon++;
+    let minDist = Infinity;
+    let icon = 0;
+    for (let k = 0; k < this.nodeCount; k++) {
+      if (this.nodeKind[k] === SEPARATOR) continue;
+      const dist = Math.abs(this._staticCenter[k + NUM_GHOSTS] - xm);
+      if (dist < minDist) {
+        minDist = dist;
+        peak = icon;
       }
-      if (minDist > Math.max(threshold, ghostCell)) peak = -1;
+      icon++;
     }
-    this.peak = peak;
+    if (minDist > Math.max(threshold, ghostCell)) peak = -1;
+    return peak;
+  }
 
-    // packed length now, and with the bell at dead centre: the difference is
-    // spread over all gaps so the dock keeps its length wherever the pointer is
+  // packed length now
+  _activeLength(T, padding) {
+    const width = this._width;
+    const pres = this._pres;
     let activeL = 0;
     for (let i = 0; i < T; i++) {
       activeL += width[i] + (i > 0 ? (padding * (pres[i - 1] + pres[i])) / 2 : 0);
     }
-    const hoverFactor = peak >= 0 ? 1.0 : 0.0;
-    const centerMouse = totalStatic / 2;
+    return activeL;
+  }
+
+  // packed length with the bell at dead centre
+  _centeredLength(T, hoverFactor, centerMouse, padding, threshold, scaleAtMax, curve) {
+    const base = this._base;
+    const pres = this._pres;
     let centerPackedL = 0;
     for (let i = 0; i < T; i++) {
       let w = base[i] * pres[i];
-      if (iconLike[i]) {
+      if (this._iconLike[i]) {
         const target = getScale(
-          staticCenter[i],
+          this._staticCenter[i],
           centerMouse,
           threshold,
           scaleAtMax,
@@ -400,31 +503,57 @@ export class DockLayout {
       centerPackedL +=
         w + (i > 0 ? (padding * (pres[i - 1] + pres[i])) / 2 : 0);
     }
-    // never below -padding: a negative gap would put a node over its neighbour
-    const share = Math.max((centerPackedL - activeL) / T, -padding);
+    return centerPackedL;
+  }
 
-    // pack: neighbouring rects are exactly `padding + share` apart, scaled by
-    // how present the two are (a node still opening takes half a gap on each
-    // side of itself, so a closed one costs nothing)
-    const gap = padding + share;
-    let edge = 0;
-    let leftEdge = 0;
-    let rightEdge = 0;
+  // the difference of the two packed lengths is spread over all gaps so the
+  // dock keeps its length wherever the pointer is
+  _gapShare(T, hoverFactor, centerMouse, padding, threshold, scaleAtMax, curve) {
+    const activeL = this._activeLength(T, padding);
+    const centerPackedL = this._centeredLength(
+      T,
+      hoverFactor,
+      centerMouse,
+      padding,
+      threshold,
+      scaleAtMax,
+      curve
+    );
+    // never below -padding: a negative gap would put a node over its neighbour
+    return Math.max((centerPackedL - activeL) / T, -padding);
+  }
+
+  // pack: neighbouring rects are exactly `gap` (padding + share) apart,
+  // scaled by how present the two are (a node still opening takes half a gap
+  // on each side of itself, so a closed one costs nothing). Fills nodeCenter
+  // in packed coordinates, leaves the first real node's left edge in
+  // _leftEdge and returns the real nodes' packed length.
+  _pack(n, gap) {
+    const G = NUM_GHOSTS;
+    const width = this._width;
+    const pres = this._pres;
     const centers = this.nodeCenter;
+    let edge = 0;
+    let rightEdge = 0;
     // first pass: left edge of the first real node, in packed coordinates
     for (let i = 0; i < G; i++) {
       edge += width[i] + (gap * (pres[i] + pres[i + 1])) / 2;
     }
-    leftEdge = edge;
+    const leftEdge = edge;
     for (let k = 0; k < n; k++) {
       const i = k + G;
       centers[k] = edge + width[i] / 2;
       rightEdge = edge + width[i];
       edge += width[i] + (gap * (pres[i] + pres[i + 1])) / 2;
     }
-    const realActiveL = rightEdge - leftEdge;
-    const centeringShift = (restL - realActiveL) / 2;
+    this._leftEdge = leftEdge;
+    return rightEdge - leftEdge;
+  }
 
+  _writeNodes(n, centeringShift, restStart) {
+    const G = NUM_GHOSTS;
+    const centers = this.nodeCenter;
+    const leftEdge = this._leftEdge;
     let icon = 0;
     for (let k = 0; k < n; k++) {
       const i = k + G;
@@ -432,13 +561,13 @@ export class DockLayout {
       const restCenter = (this.nodeRestStart[k] + this.nodeRestEnd[k]) / 2;
       const delta = activeCenter + centeringShift - (restCenter - restStart);
       this.nodeDelta[k] = delta;
-      this.nodeScale[k] = scale[i];
-      this.nodeSize[k] = width[i];
+      this.nodeScale[k] = this._scale[i];
+      this.nodeSize[k] = this._width[i];
       // stage coordinates: where the node's centre ends up
       centers[k] = restCenter + delta;
-      if (kind[k] === ICON) {
+      if (this.nodeKind[k] === ICON) {
         this.iconDelta[icon] = delta;
-        this.iconScale[icon] = scale[i];
+        this.iconScale[icon] = this._scale[i];
         icon++;
       }
     }
@@ -448,7 +577,6 @@ export class DockLayout {
     centers.length = n;
     this.iconDelta.length = icon;
     this.iconScale.length = icon;
-    return true;
   }
 
   // Places every kept separator between the icons as they are DISPLAYED

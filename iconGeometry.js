@@ -106,6 +106,15 @@ const BAND_FUZZ = 1.5;
  * `canvas` units, drawn for a dock at the bottom (y grows towards the screen
  * edge). Must track the style functions in apps/dot.js.
  */
+/**
+ * The drawing style behind a running-indicator-style option: the first option,
+ * 'default' (the schema default), is the macOS-style row of dots. Dot.js has
+ * a draw method per style, none for 'default', so it must not reach it raw.
+ */
+export function resolveIndicatorStyle(style) {
+  return !style || style === 'default' ? 'dots' : style;
+}
+
 export function indicatorBand(style, sizeIndex, canvas) {
   let m = SIZE_FACTORS[sizeIndex] || 1;
   let bar = (extra = 0) => (BAR_HEIGHT + extra) * m;

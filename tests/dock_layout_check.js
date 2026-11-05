@@ -136,19 +136,21 @@ const KIND_SETS = {
   'single icon + separator': ['app', 'sep', 'trash'],
 };
 
-function* scenarios() {
-  for (const [setName, kinds] of Object.entries(KIND_SETS)) {
-    for (const vertical of [false, true]) {
-      for (const sf of [1, 2]) {
-        for (const spacing of [0, 0.5, 1]) {
-          for (const thickness of [1, 2, 6, 14]) {
-            for (const magnify of [0, 0.3, 1.0]) {
-              yield { setName, kinds, vertical, sf, spacing, thickness, magnify, spread: 0.75 };
-            }
-          }
-        }
+// every (vertical, sf, spacing, thickness, magnify) combination, in nesting order
+const GRID = [];
+for (const vertical of [false, true]) {
+  for (const sf of [1, 2]) {
+    for (const spacing of [0, 0.5, 1]) {
+      for (const thickness of [1, 2, 6, 14]) {
+        for (const magnify of [0, 0.3, 1.0]) GRID.push({ vertical, sf, spacing, thickness, magnify });
       }
     }
+  }
+}
+
+function* scenarios() {
+  for (const [setName, kinds] of Object.entries(KIND_SETS)) {
+    for (const g of GRID) yield { setName, kinds, ...g, spread: 0.75 };
   }
 }
 
@@ -292,6 +294,47 @@ function sweep(dock) {
 // ---------------------------------------------------------------------
 // 3. icon-only docks: identical to the pre-separator animator math
 // ---------------------------------------------------------------------
+// centres of nodes packed `pad` apart
+function legacyCenters(widths, pad) {
+  const centers = [];
+  let c = 0;
+  for (let i = 0; i < widths.length; i++) {
+    const h = widths[i] / 2;
+    c = i === 0 ? h : c + widths[i - 1] / 2 + h + pad;
+    centers.push(c);
+  }
+  return centers;
+}
+
+// total length of nodes packed `pad` apart
+function legacyPackedLength(widths, pad) {
+  const centers = legacyCenters(widths, pad);
+  return centers[centers.length - 1] + widths[widths.length - 1] / 2;
+}
+
+// the old animator's icon under the pointer, or null
+function legacyPeak(staticCenters, xm, within, n, threshold, activeContainerWidth, NUM_IMAGINARY) {
+  let peak = null;
+  let minD = Infinity;
+  if (!within) return peak;
+  for (let i = 0; i < n; i++) {
+    const d = Math.abs(staticCenters[i + NUM_IMAGINARY] - xm);
+    if (d < minD) { minD = d; peak = i; }
+  }
+  if (minD > Math.max(threshold, activeContainerWidth)) peak = null;
+  return peak;
+}
+
+// the old animator's per-slot widths
+function legacyWidths(staticCenters, within, xm, threshold, scaleAtMax, ICON_SIZE) {
+  const iconWidths = [];
+  for (let i = 0; i < staticCenters.length; i++) {
+    if (!within) iconWidths.push(ICON_SIZE);
+    else iconWidths.push(ICON_SIZE * getScale(staticCenters[i], xm, threshold, scaleAtMax, 0));
+  }
+  return iconWidths;
+}
+
 function legacyDeltas({ restStarts, restSize, sf, spacing, magnify, pointer }) {
   const n = restStarts.length;
   const iconSize = ICON_BASE;
@@ -315,31 +358,9 @@ function legacyDeltas({ restStarts, restSize, sf, spacing, magnify, pointer }) {
   const firstRealStaticLeft = staticCenters[NUM_IMAGINARY] - ICON_SIZE / 2;
   const totalCalcStaticL = TOTAL * activeContainerWidth;
   const xm = Math.max(0, Math.min(totalCalcStaticL, pointer - unwarpedActiveStartX + firstRealStaticLeft));
-  const iconScales = [];
-  const iconWidths = [];
-  for (let i = 0; i < TOTAL; i++) {
-    if (!within) { iconScales.push(1); iconWidths.push(ICON_SIZE); }
-    else {
-      const sc = getScale(staticCenters[i], xm, threshold, scaleAtMax, 0);
-      iconScales.push(sc);
-      iconWidths.push(ICON_SIZE * sc);
-    }
-  }
-  let peak = null;
-  let minD = Infinity;
-  if (within) {
-    for (let i = 0; i < n; i++) {
-      const d = Math.abs(staticCenters[i + NUM_IMAGINARY] - xm);
-      if (d < minD) { minD = d; peak = i; }
-    }
-    if (minD > Math.max(threshold, activeContainerWidth)) peak = null;
-  }
-  let cur = 0;
-  for (let i = 0; i < TOTAL; i++) {
-    const h = iconWidths[i] / 2;
-    cur = i === 0 ? h : cur + iconWidths[i - 1] / 2 + h + basePadding;
-  }
-  const activeL = cur + iconWidths[TOTAL - 1] / 2;
+  const iconWidths = legacyWidths(staticCenters, within, xm, threshold, scaleAtMax, ICON_SIZE);
+  const peak = legacyPeak(staticCenters, xm, within, n, threshold, activeContainerWidth, NUM_IMAGINARY);
+  const activeL = legacyPackedLength(iconWidths, basePadding);
   const centerMouse = totalCalcStaticL / 2;
   const hf = peak !== null ? 1 : 0;
   const centerWidths = [];
@@ -347,24 +368,13 @@ function legacyDeltas({ restStarts, restSize, sf, spacing, magnify, pointer }) {
     const t = getScale(staticCenters[i], centerMouse, threshold, scaleAtMax, 0);
     centerWidths.push(ICON_SIZE * (1 + (t - 1) * hf));
   }
-  let cc = 0;
-  for (let i = 0; i < TOTAL; i++) {
-    const h = centerWidths[i] / 2;
-    cc = i === 0 ? h : cc + centerWidths[i - 1] / 2 + h + basePadding;
-  }
-  const centerPackedL = cc + centerWidths[TOTAL - 1] / 2;
+  const centerPackedL = legacyPackedLength(centerWidths, basePadding);
   const variance = centerPackedL - activeL;
   const adj = iconWidths.map((w) => w + variance / TOTAL);
   let realLeftEdgeUnshifted = 0;
   for (let i = 0; i < NUM_IMAGINARY; i++) realLeftEdgeUnshifted += adj[i];
   realLeftEdgeUnshifted += NUM_IMAGINARY * basePadding;
-  const adjCenters = [];
-  let ac = 0;
-  for (let i = 0; i < TOTAL; i++) {
-    const h = adj[i] / 2;
-    ac = i === 0 ? h : ac + adj[i - 1] / 2 + h + basePadding;
-    adjCenters.push(ac);
-  }
+  const adjCenters = legacyCenters(adj, basePadding);
   const realLeft = adjCenters[NUM_IMAGINARY] - adj[NUM_IMAGINARY] / 2;
   const realRight = adjCenters[NUM_IMAGINARY + n - 1] + adj[NUM_IMAGINARY + n - 1] / 2;
   const centeringShift = (restingL - (realRight - realLeft)) / 2;
@@ -380,6 +390,7 @@ function legacyDeltas({ restStarts, restSize, sf, spacing, magnify, pointer }) {
   }
   return { deltas, minGap, peak };
 }
+
 
 {
   const layout = new DockLayout();
@@ -479,6 +490,8 @@ function legacyDeltas({ restStarts, restSize, sf, spacing, magnify, pointer }) {
         `${tag}: measured icons are in dock order`
       );
       check(ok === (expected.length > 0), `${tag}: compute reports whether anything was laid out`);
+      // an icon the dock knows but cannot measure leaves the slots unsettled
+      if (how !== 'no _icon') check(layout.settled === false, `${tag}: slots are not settled`);
       check(layout.iconDelta.length === expected.length && layout.iconDelta.every(Number.isFinite), `${tag}: finite deltas for each measured icon only`);
       // separators whose neighbour was not measured are dropped, not laid out
       check(layout.sepActors.every((a) => a._cls === SEPARATOR_CLASS), `${tag}: kept separators are separators`);

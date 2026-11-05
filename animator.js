@@ -11,7 +11,7 @@ import { smoothScaling } from './textureFilters.js';
 import { IconNormalizer } from './iconNormalizer.js';
 import { DockItemDotsOverlay, DockItemBadgeOverlay } from './dockItems.js';
 import { live } from './probe.js';
-import { outward } from './iconGeometry.js';
+import { CONTENT_TARGET, outward } from './iconGeometry.js';
 import { animatedEdgeDistance } from './indicatorSpacing.js';
 import {
   advancePresence,
@@ -247,12 +247,15 @@ export let Animator = class {
     }
 
     let offset = renderOffset[vertical ? 1 : 0];
+    // The visible art, not the texture: transparent padding around an
+    // off-centre icon is no obstacle, and normalization keeps the art
+    // within CONTENT_TARGET of the slot.
     layout.icons.forEach((icon, k) => {
-      let r = icon._renderer;
-      let start = (vertical ? r.y : r.x) + offset;
-      let size = vertical ? r.height * r.scaleY : r.width * r.scaleX;
+      let slot = icon._slotSize;
+      let pad = ((1 - CONTENT_TARGET) / 2) * slot;
+      let start = (vertical ? icon._slotY : icon._slotX) + offset + pad;
       layout.iconShownStart[k] = start;
-      layout.iconShownEnd[k] = start + size;
+      layout.iconShownEnd[k] = start + slot * CONTENT_TARGET;
     });
     layout.fitSeparators(thickness + 0.5);
 
@@ -572,8 +575,9 @@ export let Animator = class {
     // none has run since the last frame is its offset cleared. The flag is
     // consumed below, after the renderer has seen it.
     if (icon._appwell) {
-      run.didBounce = icon._appwell._bounce;
-      if (!run.didBounce) zeroTranslation(icon._appwell);
+      const bouncing = icon._appwell._bounce;
+      run.didBounce = run.didBounce || bouncing;
+      if (!bouncing) zeroTranslation(icon._appwell);
     }
   }
 

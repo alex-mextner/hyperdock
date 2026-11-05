@@ -26,7 +26,7 @@ import { get_distance_sqr, get_distance, isInRect, isOverlapRect } from './utils
 import { syncOpenAtLogin, hideOpenAtLogin } from './openAtLogin.js';
 import { orderExtraIcons, syncFolderStacks, syncRecentsStack } from './stackDock.js';
 import { computeIconMetrics } from './iconMetrics.js';
-import { outerGrowth, platterCentreShift, platterPadding } from './indicatorSpacing.js';
+import { indicatorRoom } from './indicatorSpacing.js';
 import {
   filterDashRunningApps,
   onActiveWorkspace,
@@ -1563,10 +1563,16 @@ export let Dock = GObject.registerClass(
 
       // the platter reaches past the items far enough for the running dots;
       // the dash is that much further from the screen edge (indicatorSpacing.js)
-      const platterPad = platterPadding(iconSize, this.extension.dock_padding, scaleFactor);
-      this._outerGrowth = outerGrowth(iconSize * scaleFactor, itemSize, platterPad);
-      this._platterCentreShift = platterCentreShift(this._outerGrowth, platterPad);
-      this._edge_distance += this._outerGrowth;
+      const room = indicatorRoom({
+        iconSize,
+        itemSize,
+        dockPadding: this.extension.dock_padding,
+        scaleFactor,
+        edgeDistance: this._edge_distance,
+      });
+      this._outerGrowth = room.outerGrowth;
+      this._platterCentreShift = room.platterCentreShift;
+      this._edge_distance = room.edgeDistance;
 
       //! check with multi-monitor and scaled displays
       this.x = m.x;
@@ -1778,7 +1784,10 @@ export let Dock = GObject.registerClass(
         this._needsLayout = true;
       }
 
-      this._snapToContainerEdge(this, this.dash, true);
+      // a dash that is not on the stage yet (createDash() fills it before the
+      // dock is on chrome) has no theme node to size itself from; addToChrome()
+      // lays it out once it is
+      if (this.dash.get_stage()) this._snapToContainerEdge(this, this.dash, true);
 
       // if (caller) {
       //   console.log(`animation triggered by ${caller}`);

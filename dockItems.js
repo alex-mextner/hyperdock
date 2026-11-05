@@ -27,6 +27,7 @@ import {
   indicatorBand,
   indicatorPlacement,
   outward,
+  resolveIndicatorStyle,
   visibleEdge,
 } from './iconGeometry.js';
 import {
@@ -233,7 +234,7 @@ export const DockItemDotsOverlay = GObject.registerClass(
       renderer._canvas.set_scale(canvasScale, canvasScale);
 
       let sizeIndex = extension.running_indicator_size || 0;
-      let style = running_indicator_style || 'default';
+      let style = resolveIndicatorStyle(running_indicator_style);
       if (this._bandStyle !== style || this._bandSize !== sizeIndex) {
         this._bandStyle = style;
         this._bandSize = sizeIndex;

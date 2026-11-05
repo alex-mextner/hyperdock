@@ -81,7 +81,7 @@ export async function importWithStubs(modulePath, options = {}) {
   const rewritten = readText(sourcePath).replace(
     IMPORT_RE,
     (statement, head, quote, specifier) => {
-      if (real.has(specifier)) return statement;
+      if (real.has(specifier) && !(specifier in stubs)) return statement;
       if (specifier.startsWith('.') && real.has(specifier)) return statement;
       let url = stubUrls.get(specifier);
       if (!url) {

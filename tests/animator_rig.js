@@ -166,7 +166,7 @@ const STUBS = {
   './textureFilters.js': 'export const smoothScaling = () => {};',
   './iconNormalizer.js': `export class IconNormalizer {
     constructor() { this.version = 0; this.onChange = null; }
-    get() { return globalThis.__RigNorm; }
+    get(source, size) { return globalThis.__RigNormFor ? globalThis.__RigNormFor(source, size) : globalThis.__RigNorm; }
     destroy() {}
   }`,
   './dockItems.js': `export const DockItemDotsOverlay = globalThis.__RigOverlay;

@@ -7,9 +7,11 @@ import {
   visibleEdge,
   normalization,
   opaqueBBox,
+  resolveIndicatorStyle,
   snapToPixel,
 } from '../iconGeometry.js';
 import System from 'system';
+import { importWithStubs } from './harness.js';
 
 let failures = 0;
 function check(cond, msg) {
@@ -196,6 +198,24 @@ function disc(size, fraction, cx = size / 2, cy = size / 2, rowPad = 0) {
   check(visibleEdge('left', -3 - 60, -60, 0) === -60, 'left: hidden dock leaves the screen with its dots');
   check(visibleEdge('right', 1203 + 60, 60, 1200) === 1260, 'right: hidden dock leaves the screen with its dots');
   check(visibleEdge('bottom', 790, -10, 800) === 790, 'bottom: dock raised by edge distance keeps its edge');
+}
+
+// #84: every option of the running-indicator-style setting (the schema default
+// is index 0, 'default') must resolve to a style apps/dot.js has a draw method for
+{
+  const DRAWN = new Set([
+    'dots', 'dot', 'dashes', 'dash', 'squares', 'square', 'segmented', 'solid',
+    'triangles', 'triangle', 'diamonds', 'diamond', 'binary',
+  ]);
+  const { module } = await importWithStubs('preferences/keys.js', { real: ['./prefKeys.js'] });
+  const keys = module.SettingsKeys();
+  const options = keys._keys['running-indicator-style']?.options ?? [];
+  check(options.length > 1 && options[0] === 'default', 'running-indicator-style option 0 is default');
+  for (const option of options) {
+    check(DRAWN.has(resolveIndicatorStyle(option)), `style option '${option}' resolves to a drawn style`);
+  }
+  check(resolveIndicatorStyle(undefined) === 'dots', 'a missing style draws dots');
+  check(resolveIndicatorStyle('dash') === 'dash', 'a named style is kept');
 }
 
 if (failures) {

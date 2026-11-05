@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=padded
+Exec=true
+Icon=@ICONDIR@/padded.svg
+Terminal=false

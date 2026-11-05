@@ -114,3 +114,18 @@ export function animatedEdgeDistance(distance, growth = 0) {
 export function platterCentreShift(growth, platterPad) {
   return (growth - OUTER_PADDING_SHARE * platterPad) / 2;
 }
+
+/**
+ * What a dock adds for the running indicators: how far the platter reaches
+ * past the items, the same lift of the dash, the platter's centre shift and
+ * the dash's resulting distance from the screen edge (all px).
+ */
+export function indicatorRoom({ iconSize, itemSize, dockPadding, scaleFactor, edgeDistance }) {
+  const platterPad = platterPadding(iconSize, dockPadding, scaleFactor);
+  const outer = outerGrowth(iconSize * scaleFactor, itemSize, platterPad);
+  return {
+    outerGrowth: outer,
+    platterCentreShift: platterCentreShift(outer, platterPad),
+    edgeDistance: edgeDistance + outer,
+  };
+}

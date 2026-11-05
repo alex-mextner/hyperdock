@@ -44,6 +44,15 @@ Record of official releases for Hyperdock, aligned by GNOME Shell major version.
 Releases of the fork are cut from the `mac-tahoe` branch by pushing a tag; the
 `release` workflow (`.github/workflows/release.yml`) does the rest.
 
+### v1.4.3 (metadata `version` 104)
+
+* Running dots clear the icon art, on one shared baseline with macOS-like proportions (gap 0.23, dot 0.10, edge margin 0.066 of the icon size): the platter reaches past the items and the dash is lifted by the same amount; struts follow, a lone icon keeps its lifted dash.
+* The default running-indicator style draws dots (it drew nothing).
+* A pooled renderer shown another icon starts at that icon's size correction, so art never enters the dot band after an icon swap.
+* Separators are fitted to the icons' art, not their textures, and follow the platter on all four edges.
+* No St "not in the stage" criticals when the dock is enabled; the dock layout is not "settled" while an icon cannot be measured.
+* Animator: badges and dots skip the dragged icon, bounce is tracked for every icon, the stack-list pointer shift follows the dock edge.
+
 ### v1.4.0 (metadata `version` 101)
 
 * Folder stacks and the Recents/Downloads/Screenshots/Trash group render as piles; the popover groups items into date or kind batches.
