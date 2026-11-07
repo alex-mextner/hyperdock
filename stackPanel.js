@@ -24,6 +24,7 @@ import { trySpawnCommandLine } from './utils.js';
 import { StackContent } from './stackContent.js';
 import { PANEL, cellName } from './stackLayout.js';
 import { fillThumbnail, stackIconFor } from './stackThumbs.js';
+import { closeOnOverviewTransition, pushPopoverGrab } from './popoverInput.js';
 import {
   STACK_DISPLAYS,
   STACK_DISPLAY_LABELS,
@@ -240,8 +241,12 @@ export const StackPanel = GObject.registerClass(
       Main.uiGroup.add_child(this);
       this._place();
       // modal like a real popup: Escape reaches us and a click anywhere else
-      // lands on the backdrop and closes the panel
-      this._grab = Main.pushModal(this);
+      // lands on the backdrop and closes the panel. The grab keeps the layout
+      // and Super shortcuts alive (popoverInput.js); Super toggles the overview,
+      // which this panel must not stay on top of.
+      ({ grab: this._grab, release: this._releaseGrab } = pushPopoverGrab(this));
+      this._stopOverviewWatch = closeOnOverviewTransition(() => this.close());
+      this.connect('destroy', () => this._stopOverviewWatch?.());
       this.grab_key_focus();
       this._animateIn();
     }
@@ -538,6 +543,8 @@ export const StackPanel = GObject.registerClass(
         this.dock.autohider?._debounceCheckHide?.();
       }
       this.dock = null;
+      this._stopOverviewWatch?.();
+      this._releaseGrab?.();
       if (this._grab) {
         Main.popModal(this._grab);
         this._grab = null;

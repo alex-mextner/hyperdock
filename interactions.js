@@ -14,6 +14,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as DND from 'resource:///org/gnome/shell/ui/dnd.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import * as Compat from './compat.js';
+import { attachMenuToOverlayKey } from './popoverInput.js';
 import * as Fav from 'resource:///org/gnome/shell/ui/appFavorites.js';
 import { gettext as _ } from 'resource:///org/gnome/shell/extensions/extension.js';
 import { DragOffGesture, HOLD_MS, isOutside, removalKind } from './dragOff.js';
@@ -409,6 +410,7 @@ export class DockInteractions {
     Main.uiGroup.add_child(menu.actor);
     menu.actor.hide();
     this._menuManager.addMenu(menu);
+    attachMenuToOverlayKey(menu);
     this._menu = menu;
   }
 

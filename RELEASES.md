@@ -44,6 +44,10 @@ Record of official releases for Hyperdock, aligned by GNOME Shell major version.
 Releases of the fork are cut from the `mac-tahoe` branch by pushing a tag; the
 `release` workflow (`.github/workflows/release.yml`) does the rest.
 
+### v1.4.4 (metadata `version` 105)
+
+* Super over a dock popover: a tap of Super is ignored while another popup (PrintScreen's capture UI, the calendar or quick-settings menu) is stacked on top of the popover, as in the stock Shell; the popover stays open and usable once the other popup is gone. The layout shortcut and Super keep working with the popover on top.
+
 ### v1.4.3 (metadata `version` 104)
 
 * Running dots clear the icon art, on one shared baseline with macOS-like proportions (gap 0.23, dot 0.10, edge margin 0.066 of the icon size): the platter reaches past the items and the dash is lifted by the same amount; struts follow, a lone icon keeps its lifted dash.

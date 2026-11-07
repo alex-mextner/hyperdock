@@ -17,6 +17,7 @@ import { layoutScenario, widthScenario } from './layoutScenarios.js';
 import { stacksScenario } from './stackScenarios.js';
 import { stackOpenScenario } from './stackOpenScenarios.js';
 import { appGridPileScenario } from './appGridPileScenarios.js';
+import { inputGrabScenario } from './inputGrabScenarios.js';
 
 let started = false;
 let stopped = false;
@@ -137,6 +138,7 @@ const SCENARIOS = {
   stacks: (ext) => stacksScenario(ext, helpers),
   stackopen: (ext) => stackOpenScenario(ext, helpers),
   appgrid: (ext) => appGridPileScenario(ext, helpers),
+  inputgrab: (ext) => inputGrabScenario(ext, helpers),
 };
 
 // Called by probe() after the first enable
