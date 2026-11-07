@@ -1032,7 +1032,7 @@
   </object>
   <object class="GtkStringList" id="running-indicator-style-model">
     <items>
-      <item translatable="yes">None</item>
+      <item translatable="yes">Default</item>
       <item translatable="yes">Dots</item>
       <item translatable="yes">Dot</item>
       <item translatable="yes">Dashes</item>
@@ -1046,6 +1046,7 @@
       <item translatable="yes">Diamonds</item>
       <item translatable="yes">Diamond</item>
       <item translatable="yes">Binary</item>
+      <item translatable="yes">None</item>
     </items>
   </object>
   <object class="GtkStringList" id="notification-badge-style-model">

@@ -3,6 +3,7 @@
 // (autohide, edge distance), the platter behind the icons and the struts that
 // reserve the screen space. No Shell imports: the dock is passed in.
 import { Vector } from './vector.js';
+import { outward } from './iconGeometry.js';
 import { fadeInStep } from './animatorMath.js';
 
 /** Fades a newly shown dock in; returns whether it is still fading. */
@@ -33,9 +34,13 @@ export function resolvePointer(dock, pointer) {
   let result = pointer;
   if (dock.extension.simulated_pointer) result = [...dock.extension.simulated_pointer];
   if (dock.simulated_pointer) result = [...dock.simulated_pointer];
-  // disable icon scale animation upon hovering an item
+  // disable icon scale animation upon hovering an item: the pointer is taken
+  // one icon inwards, away from the screen edge the dock sits on
   if (listIsOpenOnHoveredIcon(dock)) {
-    result[1] -= dock._iconSize * dock._scaleFactor;
+    const [ox, oy] = outward(dock._position);
+    const shift = dock._iconSize * dock._scaleFactor;
+    result[0] -= ox * shift;
+    result[1] -= oy * shift;
   }
   return result;
 }
@@ -91,31 +96,45 @@ export function slideDash(dock, run) {
   moveDash(dock, target.x, target.y, run.scaleFactor);
 }
 
-// the struts reserve the space the dock takes along the screen edge
-function updateStruts(dock, run) {
+// the struts reserve the space the dock takes along the screen edge.
+// `drawn`: the platter was drawn this frame (it needs two measured icons);
+// without it the lifted dash is all there is to reserve, whatever size the
+// background kept from an earlier frame, and an autohidden dock reserves the
+// whole edge.
+export function updateStruts(dock, run, drawn) {
   const { vertical, edge, iconSize, scaleFactor, edgeDistance } = run;
   const bg = dock._background;
   const struts = dock.struts;
   const grow = iconSize * 0.2 * scaleFactor;
-  const pad = bg._padding * scaleFactor;
-  const autohide = dock.extension.autohide_dash;
-  if (vertical) {
-    struts.width = bg.width + grow + edgeDistance - pad;
-    struts.height = dock.height;
-    if (autohide) {
-      struts.y = bg.y + dock._monitor.y;
-      struts.height = bg.height;
-    }
-    struts.x = edge.right ? dock.x + dock.width - struts.width : dock.x;
-  } else {
-    struts.width = dock.width;
-    struts.height = bg.height + grow + edgeDistance - pad;
-    if (autohide) {
-      struts.x = bg.x + dock._monitor.x;
-      struts.width = bg.width;
-    }
-    struts.y = edge.bottom ? dock.y + dock.height - struts.height : dock.y;
+  // the dash sits `edgeDistance` off the edge, the platter reaches the lift
+  // further (dock._outerGrowth): it is the platter the struts follow
+  const gap = edgeDistance - (drawn ? dock._outerGrowth || 0 : 0);
+  const follow = dock.extension.autohide_dash && drawn;
+  const thickness = (drawn ? bg[vertical ? 'width' : 'height'] : 0) + grow + gap;
+  if (vertical) strutsAlongColumn(dock, edge, thickness, follow);
+  else strutsAlongRow(dock, edge, thickness, follow);
+}
+
+function strutsAlongColumn(dock, edge, thickness, follow) {
+  const { struts, _background: bg } = dock;
+  struts.width = thickness;
+  struts.height = dock.height;
+  if (follow) {
+    struts.y = bg.y + dock._monitor.y;
+    struts.height = bg.height;
   }
+  struts.x = edge.right ? dock.x + dock.width - struts.width : dock.x;
+}
+
+function strutsAlongRow(dock, edge, thickness, follow) {
+  const { struts, _background: bg } = dock;
+  struts.width = dock.width;
+  struts.height = thickness;
+  if (follow) {
+    struts.x = bg.x + dock._monitor.x;
+    struts.width = bg.width;
+  }
+  struts.y = edge.bottom ? dock.y + dock.height - struts.height : dock.y;
 }
 
 /** Redraws the platter behind the icons (from the first to the last) and the struts. */
@@ -132,7 +151,7 @@ export function updateBackground(dock, run, first, last) {
     dock,
   });
 
-  updateStruts(dock, run);
+  updateStruts(dock, run, !!first && !!last && first !== last);
   dock._updateTransparenies();
   dock._syncGlass();
 }

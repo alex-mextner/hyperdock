@@ -4,13 +4,22 @@
 # saves a screenshot, then compares the dock region with tests/visual/golden/dock-default.png
 # (tools/visual_compare.py). A changed dock render fails the run and leaves a diff image.
 #
-# Usage: tools/visual-shell.sh [--update]
+# Usage: tools/visual-shell.sh [--update | --shot]
 #   --update  store this run's dock region as the new golden instead of comparing
+#   --shot    only save the whole stage as frame.png (scenarios below), compare nothing
 # Env:
 #   D2DA_VISUAL_OUT       where frame.png, the diff and the shell log go (default ./visual-out)
 #   D2DA_VISUAL_CROP      X,Y,W,H of the compared region (default below)
+#   D2DA_VISUAL_MONITOR   WxH of the virtual monitor (default 1200x800)
+#   D2DA_VISUAL_SCALE     logical scale of that monitor, e.g. 1.5 (needs a size the scale divides: 1200x900)
+#   D2DA_VISUAL_COLOR_SCHEME  prefer-light | prefer-dark: the shell's color-scheme (light or dark platter)
+#   D2DA_VISUAL_BOUNCE    1: bounce the first icon, the shot is taken mid-bounce
+#   D2DA_VISUAL_FAVORITES comma list of pinned .desktop ids (default: the five fixture apps)
+#   D2DA_VISUAL_RUNNING   comma list of fixture app ids (d2da-visual-terminal, ...) given a window,
+#                         so the dock draws their running indicators; closes the overview first
 #   D2DA_SMOKE_SETTINGS   'key=value ...' applied by probe.js, as for tools/smoke-shell.sh
-#                         (the way to provoke a regression on purpose)
+#                         (default app-grid-pile=false; the way to provoke a regression
+#                         on purpose)
 #
 # The golden was rendered by llvmpipe in the ubuntu:26.04 smoke container
 # (tools/smoke-docker.sh), the same place CI runs this. Regenerate it there:
@@ -25,7 +34,7 @@ OUT=${D2DA_VISUAL_OUT:-$REPO/visual-out}
 CROP=${D2DA_VISUAL_CROP:-380,720,440,80}
 GOLDEN=$REPO/tests/visual/golden/dock-default.png
 HELPER_UUID=d2da-visual-helper@test.local
-FAVORITES=d2da-visual-terminal.desktop,d2da-visual-files.desktop,d2da-visual-calc.desktop,d2da-visual-editor.desktop,d2da-visual-settings.desktop
+FAVORITES=${D2DA_VISUAL_FAVORITES:-d2da-visual-terminal.desktop,d2da-visual-files.desktop,d2da-visual-calc.desktop,d2da-visual-editor.desktop,d2da-visual-settings.desktop}
 
 if [ -z "$D2DA_VISUAL_INNER" ]; then
 	mkdir -p "$OUT"
@@ -40,7 +49,9 @@ LOG=$OUT/shell.log
 mkdir -p "$OUT" "$DATA/gnome-shell/extensions" "$DATA/applications" "$DATA/icons-fixture" "$SHOTS"
 : >"$LOG"
 
+WINDOW_PIDS=
 cleanup() {
+	[ -n "$WINDOW_PIDS" ] && kill $WINDOW_PIDS 2>/dev/null
 	[ -n "$SHELL_PID" ] && kill "$SHELL_PID" 2>/dev/null
 	[ -n "$SHELL_PID" ] && wait "$SHELL_PID" 2>/dev/null
 	rm -rf "$WORK"
@@ -53,14 +64,19 @@ make -s -C "$REPO" install EXT_DIR="$DATA/gnome-shell/extensions/$UUID" >/dev/nu
 	exit 2
 }
 cp -R "$REPO/tests/visual/helper" "$DATA/gnome-shell/extensions/$HELPER_UUID"
-cp "$REPO"/tests/visual/apps/icons/*.svg "$DATA/icons-fixture/"
-for desktop in "$REPO"/tests/visual/apps/*.desktop; do
+cp "$REPO"/tests/visual/apps/icons/*.svg "$REPO"/tests/visual/sizes/*.svg "$DATA/icons-fixture/"
+for desktop in "$REPO"/tests/visual/apps/*.desktop "$REPO"/tests/visual/sizes/*.desktop; do
 	sed "s#@ICONDIR@#$DATA/icons-fixture#" "$desktop" >"$DATA/applications/$(basename "$desktop")"
 done
 
+# The apps icon's pile is drawn by a separate process that can still be at work when
+# the frame is taken (a half drawn pile failed one CI run of an unchanged commit): the
+# golden is of a plain apps icon, the pile has its own scenario (app-grid-pile-shell.sh).
 XDG_DATA_HOME=$DATA D2DA_PROBE=1 GSETTINGS_BACKEND=memory \
+	D2DA_SMOKE_SETTINGS="${D2DA_SMOKE_SETTINGS:-app-grid-pile=false}" \
 	D2DA_SHOT_DIR=$SHOTS D2DA_SHOT_FAVORITES=$FAVORITES D2DA_SHOT_DELAY_MS=${D2DA_SHOT_DELAY_MS:-9000} \
-	gnome-shell --headless --no-x11 --virtual-monitor 1200x800 >>"$LOG" 2>&1 &
+	D2DA_SHOT_SCALE=${D2DA_VISUAL_SCALE:-} D2DA_SHOT_BOUNCE=${D2DA_VISUAL_BOUNCE:-} D2DA_SHOT_NO_OVERVIEW=${D2DA_VISUAL_RUNNING:+1} D2DA_SHOT_COLOR_SCHEME=${D2DA_VISUAL_COLOR_SCHEME:-} \
+	gnome-shell --headless --no-x11 --virtual-monitor "${D2DA_VISUAL_MONITOR:-1200x800}" >>"$LOG" 2>&1 &
 SHELL_PID=$!
 
 i=0
@@ -78,6 +94,18 @@ gnome-extensions enable "$UUID"
 sleep 1
 gnome-extensions enable "$HELPER_UUID"
 
+# windows for the fixture apps: clients of this shell's own Wayland socket
+if [ -n "$D2DA_VISUAL_RUNNING" ]; then
+	# a monitor reconfiguration (the scale) takes the first clients with it: start them after it
+	# (the shell's log is block buffered, so there is nothing to wait for in it: sleep)
+	[ -n "$D2DA_VISUAL_SCALE" ] && sleep 4
+	DISPLAY_NAME=$(sed -n "s/.*Using Wayland display name '\\([^']*\\)'.*/\\1/p" "$LOG" | head -1)
+	for app in $(echo "$D2DA_VISUAL_RUNNING" | tr ',' ' '); do
+		WAYLAND_DISPLAY=$DISPLAY_NAME GDK_BACKEND=wayland gjs -m "$REPO/tests/visual/window.js" "$app" >>"$LOG" 2>&1 &
+		WINDOW_PIDS="$WINDOW_PIDS $!"
+	done
+fi
+
 i=0
 until grep -q 'd2da-shot: saved' "$LOG"; do
 	i=$((i + 1))
@@ -93,7 +121,10 @@ wait "$SHELL_PID" 2>/dev/null
 SHELL_PID=
 
 cp "$SHOTS/frame.png" "$OUT/frame.png"
-if [ "$1" = "--update" ]; then
+if [ "$1" = "--shot" ]; then
+	echo "VISUAL: shot saved ($OUT/frame.png)"
+	exit 0
+elif [ "$1" = "--update" ]; then
 	python3 "$REPO/tools/visual_compare.py" "$OUT/frame.png" "$GOLDEN" --crop "$CROP" --update
 else
 	python3 "$REPO/tools/visual_compare.py" "$OUT/frame.png" "$GOLDEN" --crop "$CROP" --diff-out "$OUT/diff.png"

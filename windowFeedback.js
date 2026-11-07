@@ -354,38 +354,20 @@ export class WindowFeedback {
     let [x, y] = container.get_transformed_position();
     if (isNaN(x) || isNaN(y)) return null;
 
-    // the icon at rest: unmagnified, centred in its dash slot, shifted along
-    // the dock by the animator's spacing offset: where it is heading
-    // (_translate, eased into _icon.translation as the renderer is placed in
-    // animator.js), so a just-added tile is aimed at its final slot
     let size = (dock._iconSizeScaledDown || 0) * (dock._scaleFactor || 1);
     if (!size) return null;
     x += (container.width - size) / 2;
     y += (container.height - size) / 2;
-    let vertical = dock.isVertical();
-    let offset =
-      container._translate ??
-      (vertical
-        ? container._icon?.translationY
-        : container._icon?.translationX);
-    if (vertical) {
-      y += offset || 0;
-    } else {
-      x += offset || 0;
-    }
 
-    // The dash slides off-screen while autohidden. Aim at where the icon is
-    // when shown, so a window minimized meanwhile still lands on its icon.
-    let toEdge =
-      dock._position === DockPosition.BOTTOM ||
-      dock._position === DockPosition.RIGHT
-        ? 1
-        : -1;
-    let shown = -(dock._edge_distance || 0) * toEdge;
+    let vertical = dock.isVertical();
+    let along = this._restOffset(dock, container, vertical);
+    let across = this._shownShift(dock, vertical);
     if (vertical) {
-      x += shown - dock.dash.translationX;
+      x += across;
+      y += along;
     } else {
-      y += shown - dock.dash.translationY;
+      x += along;
+      y += across;
     }
 
     return {
@@ -395,6 +377,30 @@ export class WindowFeedback {
       height: Math.round(size),
       side: dock._position,
     };
+  }
+
+  // The icon at rest is unmagnified and centred in its dash slot, shifted
+  // along the dock by the animator's spacing offset: where it is heading
+  // (_translate, eased into _icon.translation as the renderer is placed in
+  // animator.js), so a just-added tile is aimed at its final slot.
+  _restOffset(dock, container, vertical) {
+    let eased = vertical
+      ? container._icon?.translationY
+      : container._icon?.translationX;
+    return (container._translate ?? eased) || 0;
+  }
+
+  // The dash slides off-screen while autohidden. Aim at where the icon is
+  // when shown, so a window minimized meanwhile still lands on its icon.
+  _shownShift(dock, vertical) {
+    let toEdge =
+      dock._position === DockPosition.BOTTOM ||
+      dock._position === DockPosition.RIGHT
+        ? 1
+        : -1;
+    let shown = -(dock._edge_distance || 0) * toEdge;
+    let slide = vertical ? dock.dash.translationX : dock.dash.translationY;
+    return shown - slide;
   }
 
   // The window is about to minimize or restore and the docks have just laid

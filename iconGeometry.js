@@ -9,7 +9,7 @@ export const ALPHA_THRESHOLD = 64;
 // Bounds on the correction so a mostly empty icon is not blown up.
 const MIN_CORRECTION = 0.6;
 const MAX_CORRECTION = 1.35;
-// Largest bbox-centering shift, in canvas fractions.
+// Largest bbox-centering shift, in canvas fractions (content past the target box is pulled back in).
 const MAX_CENTER_SHIFT = 0.08;
 
 // Leftmost / rightmost opaque pixel of one row (`row` = offset of its first
@@ -77,7 +77,16 @@ export function normalization(bbox, width, height, target = CONTENT_TARGET) {
   let clamp = v => Math.min(MAX_CENTER_SHIFT, Math.max(-MAX_CENTER_SHIFT, v));
   let cx = ((bbox.x0 + bbox.x1) / 2 - width / 2) / canvas;
   let cy = ((bbox.y0 + bbox.y1) / 2 - height / 2) / canvas;
-  return { k, dx: -clamp(cx) * k, dy: -clamp(cy) * k, fill: content * k };
+  // the shift is limited, so an off-centre icon may keep an off-centre
+  // content: keep that content inside the target box on every side, the
+  // running indicator is laid out for art that stays within it
+  let half = target / 2;
+  let inside = (lo, hi, shift) => Math.min(half - hi, Math.max(-half - lo, shift));
+  let dx = -clamp(cx) * k;
+  let dy = -clamp(cy) * k;
+  dx += inside(((bbox.x0 - width / 2) / canvas) * k + dx, ((bbox.x1 - width / 2) / canvas) * k + dx, 0);
+  dy += inside(((bbox.y0 - height / 2) / canvas) * k + dy, ((bbox.y1 - height / 2) / canvas) * k + dy, 0);
+  return { k, dx, dy, fill: content * k };
 }
 
 /** Snap a logical coordinate to the physical pixel grid. */
@@ -97,6 +106,15 @@ const BAND_FUZZ = 1.5;
  * `canvas` units, drawn for a dock at the bottom (y grows towards the screen
  * edge). Must track the style functions in apps/dot.js.
  */
+/**
+ * The drawing style behind a running-indicator-style option: the first option,
+ * 'default' (the schema default), is the macOS-style row of dots. Dot.js has
+ * a draw method per style, none for 'default', so it must not reach it raw.
+ */
+export function resolveIndicatorStyle(style) {
+  return !style || style === 'default' ? 'dots' : style;
+}
+
 export function indicatorBand(style, sizeIndex, canvas) {
   let m = SIZE_FACTORS[sizeIndex] || 1;
   let bar = (extra = 0) => (BAR_HEIGHT + extra) * m;

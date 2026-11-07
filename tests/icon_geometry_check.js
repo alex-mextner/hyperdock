@@ -7,9 +7,11 @@ import {
   visibleEdge,
   normalization,
   opaqueBBox,
+  resolveIndicatorStyle,
   snapToPixel,
 } from '../iconGeometry.js';
 import System from 'system';
+import { importWithStubs } from './harness.js';
 
 let failures = 0;
 function check(cond, msg) {
@@ -82,7 +84,34 @@ function disc(size, fraction, cx = size / 2, cy = size / 2, rowPad = 0) {
   let ny = 0.5 + (cy - 0.5) * n.k + n.dy;
   check(Math.abs(nx - 0.5) < 0.001 && Math.abs(ny - 0.5) < 0.001, 'content centre lands on the slot centre');
   let wild = normalization({ x0: 0, y0: 0, x1: 20, y1: 20 }, 256, 256);
-  check(Math.abs(wild.dx) <= 0.08 * wild.k + 1e-9 && wild.k <= 1.35, 'correction and shift are clamped');
+  check(wild.k <= 1.35, 'correction is clamped');
+}
+
+// content never leaves the target box, however off-centre: the running indicator
+// is laid out for that (indicatorSpacing.js)
+{
+  let worst = 0;
+  for (let size of [100, 256]) {
+    for (let x0 = 0; x0 < size; x0 += size / 10) {
+      for (let y0 = 0; y0 < size; y0 += size / 10) {
+        for (let w of [size / 10, size / 4, size / 2, size * 0.8, size]) {
+          let x1 = Math.min(size, x0 + w);
+          let y1 = Math.min(size, y0 + w * 0.7);
+          let n = normalization({ x0, y0, x1, y1 }, size, size);
+          let edges = [
+            ((x0 - size / 2) / size) * n.k + n.dx,
+            ((x1 - size / 2) / size) * n.k + n.dx,
+            ((y0 - size / 2) / size) * n.k + n.dy,
+            ((y1 - size / 2) / size) * n.k + n.dy,
+          ];
+          worst = Math.max(worst, ...edges.map(Math.abs));
+        }
+      }
+    }
+  }
+  check(worst <= CONTENT_TARGET / 2 + 1e-9, `content stays within the target box on every side (worst ${worst.toFixed(4)})`);
+  let low = normalization({ x0: 20, y0: 40, x1: 80, y1: 100 }, 100, 100);
+  check(((100 - 50) / 100) * low.k + low.dy <= CONTENT_TARGET / 2 + 1e-9, 'art sitting low in its canvas is pulled up inside the box');
 }
 
 // snapping
@@ -169,6 +198,26 @@ function disc(size, fraction, cx = size / 2, cy = size / 2, rowPad = 0) {
   check(visibleEdge('left', -3 - 60, -60, 0) === -60, 'left: hidden dock leaves the screen with its dots');
   check(visibleEdge('right', 1203 + 60, 60, 1200) === 1260, 'right: hidden dock leaves the screen with its dots');
   check(visibleEdge('bottom', 790, -10, 800) === 790, 'bottom: dock raised by edge distance keeps its edge');
+}
+
+// #84: every option of the running-indicator-style setting (the schema default
+// is index 0, 'default') must resolve to a style apps/dot.js has a draw method for
+{
+  // 'none' is the one option that draws nothing on purpose (it has no draw method)
+  const DRAWN = new Set([
+    'none',
+    'dots', 'dot', 'dashes', 'dash', 'squares', 'square', 'segmented', 'solid',
+    'triangles', 'triangle', 'diamonds', 'diamond', 'binary',
+  ]);
+  const { module } = await importWithStubs('preferences/keys.js', { real: ['./prefKeys.js'] });
+  const keys = module.SettingsKeys();
+  const options = keys._keys['running-indicator-style']?.options ?? [];
+  check(options.length > 1 && options[0] === 'default', 'running-indicator-style option 0 is default');
+  for (const option of options) {
+    check(DRAWN.has(resolveIndicatorStyle(option)), `style option '${option}' resolves to a drawn style`);
+  }
+  check(resolveIndicatorStyle(undefined) === 'dots', 'a missing style draws dots');
+  check(resolveIndicatorStyle('dash') === 'dash', 'a named style is kept');
 }
 
 if (failures) {

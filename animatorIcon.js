@@ -100,9 +100,9 @@ export function applySource(renderer, icon, source) {
 /**
  * Size correction: the opaque bbox of the image is measured once per icon
  * (the normalizer) and eased in, since a measurement lands a few frames after
- * the icon appears. Returns the eased scale correction `k`; the eased offsets
- * stay on the renderer (`_appliedDx`, `_appliedDy`) and the icon's content fill
- * on the icon.
+ * the icon appears; a renderer rebound to another icon starts at that icon's
+ * correction. Returns the eased scale correction `k`; the eased offsets
+ * stay on the renderer (`_appliedDx`, `_appliedDy`).
  */
 export function easeNormalization(normalizer, renderer, icon, source, baseSize) {
   const normSrc = source.gicon || source.name || icon._icon.gicon;
@@ -111,16 +111,24 @@ export function easeNormalization(normalizer, renderer, icon, source, baseSize) 
     renderer._normBase !== baseSize ||
     renderer._normVersion !== normalizer.version
   ) {
+    const swapped = renderer._normSrc !== normSrc;
     renderer._normSrc = normSrc;
     renderer._normBase = baseSize;
     renderer._normVersion = normalizer.version;
     renderer._norm = normalizer.get(normSrc, baseSize);
+    // a pooled renderer showing another icon starts from that icon's value:
+    // easing from the previous icon's lets its art enter the indicator band
+    if (swapped) {
+      const start = renderer._norm || IDENTITY_NORMALIZATION;
+      renderer._appliedK = start.k;
+      renderer._appliedDx = start.dx;
+      renderer._appliedDy = start.dy;
+    }
   }
   const norm = renderer._norm || IDENTITY_NORMALIZATION;
   const appliedK = easeToward(renderer._appliedK ?? 1, norm.k);
   renderer._appliedDx = easeToward(renderer._appliedDx ?? 0, norm.dx);
   renderer._appliedDy = easeToward(renderer._appliedDy ?? 0, norm.dy);
-  icon._contentFill = easeToward(icon._contentFill ?? 1, norm.fill);
   return appliedK;
 }
 

@@ -73,6 +73,17 @@ review the image, and commit it with the change that moved the dock:
 tools/smoke-docker.sh visual --update
 ```
 
+The Show Apps pile is drawn by a separate process that can still be at work when the frame is
+taken, so the run sets `app-grid-pile=false` (the pile has `tools/app-grid-pile-shell.sh`).
+
+`tools/visual-shell.sh --shot` saves the whole stage without comparing, for looking at a
+scenario with your own eyes: `D2DA_VISUAL_RUNNING=d2da-visual-terminal,d2da-visual-calc` gives
+fixture apps a window (running dots), `D2DA_VISUAL_MONITOR=1200x900 D2DA_VISUAL_SCALE=1.5` a
+fractional scale, `D2DA_VISUAL_COLOR_SCHEME=prefer-light`, `D2DA_VISUAL_BOUNCE=1` a shot
+mid-bounce, `D2DA_VISUAL_FAVORITES` the pinned apps, and `D2DA_SMOKE_SETTINGS` any dock
+setting (`autohide-dash=true`, `glass-material=true`, `trash-icon=true downloads-icon=true`).
+`tests/visual/sizes` holds a full-bleed and a padded icon for comparing drawn icon sizes.
+
 To provoke a failure on purpose: `D2DA_SMOKE_SETTINGS='icon-size=0.6' tools/smoke-docker.sh visual`.
 
 ## Git hooks

@@ -23,34 +23,49 @@ import {
 } from 'resource:///org/gnome/shell/ui/dash.js';
 
 import { DockPosition } from './dock.js';
-import { indicatorBand, indicatorPlacement, visibleEdge } from './iconGeometry.js';
+import {
+  indicatorBand,
+  indicatorPlacement,
+  outward,
+  resolveIndicatorStyle,
+  visibleEdge,
+} from './iconGeometry.js';
+import {
+  OUTER_PADDING_SHARE,
+  edgeMargin,
+  outwardChange,
+  platterPadding,
+  slideWithoutLift,
+} from './indicatorSpacing.js';
 import { TranslationFollower } from './overlayFollow.js';
-
-// gap between the running indicator and the dock edge, share of the icon size
-const INDICATOR_EDGE_MARGIN = 0.06;
 
 /**
  * Cross-axis coordinate (renderArea space) of the dock's visible outer edge:
- * the platter when it is drawn, else the dash (a lone icon draws no
- * platter), clamped to the monitor at rest (see visibleEdge). The dash slide
- * (autohide, edge distance) is kept so hidden docks take their dots along.
+ * the platter when it is drawn, else where it would end beside the dash (a
+ * lone icon draws no platter), clamped to the monitor at rest (see
+ * visibleEdge). The dash slide (autohide, edge distance) is kept so hidden
+ * docks take their dots along; the lift that makes room for the dots is not
+ * part of it (see indicatorSpacing.js).
  */
 function dockEdge(dock, renderOffset) {
   let bg = dock._background;
-  let box = bg && bg.opacity > 0 && bg.width > 0 && bg.height > 0 ? bg : dock.dash;
+  let drawn = bg && bg.opacity > 0 && bg.width > 0 && bg.height > 0;
+  let box = drawn ? bg : dock.dash;
+  let growth = dock._outerGrowth || 0;
+  let position = dock._position || DockPosition.BOTTOM;
+  let [ox, oy] = outward(position);
+  let vertical = ox !== 0;
+  let towards = vertical ? ox : oy;
   let pos = box.get_transformed_position();
+  let size = vertical ? box.width : box.height;
+  let start = vertical ? pos[0] : pos[1];
+  let outer = (towards > 0 ? start + size : start) + (drawn ? 0 : growth * towards);
   let mon = dock._monitor;
-  let dash = dock.dash;
-  switch (dock._position) {
-    case DockPosition.LEFT:
-      return visibleEdge('left', pos[0], dash.translationX, mon.x) - renderOffset[0];
-    case DockPosition.RIGHT:
-      return visibleEdge('right', pos[0] + box.width, dash.translationX, mon.x + mon.width) - renderOffset[0];
-    case DockPosition.TOP:
-      return visibleEdge('top', pos[1], dash.translationY, mon.y) - renderOffset[1];
-    default:
-      return visibleEdge('bottom', pos[1] + box.height, dash.translationY, mon.y + mon.height) - renderOffset[1];
-  }
+  let monStart = vertical ? mon.x : mon.y;
+  let bound = towards > 0 ? monStart + (vertical ? mon.width : mon.height) : monStart;
+  let translation = vertical ? dock.dash.translationX : dock.dash.translationY;
+  let slide = slideWithoutLift(position, translation, growth);
+  return visibleEdge(position, outer, slide, bound) - renderOffset[vertical ? 0 : 1];
 }
 
 class DockItemMenu extends PopupMenu.PopupMenu {
@@ -219,7 +234,7 @@ export const DockItemDotsOverlay = GObject.registerClass(
       renderer._canvas.set_scale(canvasScale, canvasScale);
 
       let sizeIndex = extension.running_indicator_size || 0;
-      let style = running_indicator_style || 'default';
+      let style = resolveIndicatorStyle(running_indicator_style);
       if (this._bandStyle !== style || this._bandSize !== sizeIndex) {
         this._bandStyle = style;
         this._bandSize = sizeIndex;
@@ -233,7 +248,7 @@ export const DockItemDotsOverlay = GObject.registerClass(
         rest,
         band: this._band,
         canvas: renderer._canvas.width,
-        margin: Math.max(1, rest * INDICATOR_EDGE_MARGIN),
+        margin: edgeMargin(rest),
       });
       this.set_position(at.x, at.y);
       renderer.translationX = at.dx;
@@ -548,8 +563,6 @@ export const DockBackground = GObject.registerClass(
         dock,
       } = params;
 
-      this._padding = 0;
-
       if (!first || !last || first == last) {
         this.opacity = 0;
         return;
@@ -558,8 +571,7 @@ export const DockBackground = GObject.registerClass(
       let dp = dock.dash.get_transformed_position();
       if (isNaN(dp[0]) || isNaN(dp[1])) return;
 
-      let padding =
-        iconSize * 0.1 * (dock.extension.dock_padding || 0) * scaleFactor;
+      let padding = platterPadding(iconSize, dock.extension.dock_padding, scaleFactor);
 
       let tx = first._icon.translationX;
       let ty = first._icon.translationY;
@@ -599,7 +611,6 @@ export const DockBackground = GObject.registerClass(
 
       this.x -= dock.x;
       this.y -= dock.y;
-      this._padding = padding;
 
       // adjust padding
       let az = -padding;
@@ -607,6 +618,15 @@ export const DockBackground = GObject.registerClass(
       this.width -= az * (1 + !vertical);
       this.y += az / 2;
       this.height -= az * (1 + vertical);
+
+      // the side towards the screen edge reaches as deep as the dots need
+      if (dock._outerGrowth) {
+        let more = outwardChange(position, dock._outerGrowth - OUTER_PADDING_SHARE * padding);
+        this.x += more.x;
+        this.y += more.y;
+        this.width += more.width;
+        this.height += more.height;
+      }
 
       if (panel_mode) {
         if (vertical) {

@@ -31,7 +31,7 @@ or on the natural size of those actors.
    `itemSize = floor(iconSizeSpaced * scaleFactor)`.
 4. Every icon is set to `itemSize` × `itemSize`. In a horizontal dock,
    separators are capped at `itemSize`.
-5. The dash's cross-axis size is pinned to `itemSize`; the main axis is left
+5. (Indicator spacing: the dash is then lifted off the screen edge by `outerGrowth()` and the platter reaches that far past it, see "Indicator spacing" in ANIMATION.md.) The dash's cross-axis size is pinned to `itemSize`; the main axis is left
    natural (`-1`). The platter (`DockBackground`) is centred on the dash's
    cross axis, so separators sit centred on it through `CENTER` alignment and
    equal cross-axis margins (`_inspectIcon()`). The animator moves them only
@@ -87,8 +87,11 @@ frame, for any magnification** - by construction, not through an offset.
 
 Icons ease towards their layout, so the gap that is really drawn can be
 narrower for a few frames. `Animator._placeSeparators()` therefore centres the
-line in the gap between the icon rects as drawn this frame
-(`DockLayout.fitSeparators()`): the line is never wider than that gap.
+line in the gap between the icons' art as drawn this frame
+(`DockLayout.fitSeparators()`): the line is never wider than that gap. The art
+is the `CONTENT_TARGET` share of each icon's slot (normalization keeps it
+there), not the texture rect: transparent padding of an off-centre icon never
+takes room from the line.
 
 The same gap is the **right-click hit area**: `DockLayout.slotStart/slotEnd`
 (stage coordinates, along the dock) hold the span between the previous icon

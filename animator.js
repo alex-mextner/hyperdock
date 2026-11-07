@@ -11,6 +11,8 @@ import { smoothScaling } from './textureFilters.js';
 import { IconNormalizer } from './iconNormalizer.js';
 import { DockItemDotsOverlay, DockItemBadgeOverlay } from './dockItems.js';
 import { live } from './probe.js';
+import { CONTENT_TARGET, outward } from './iconGeometry.js';
+import { animatedEdgeDistance } from './indicatorSpacing.js';
 import {
   advancePresence,
   easedOffset,
@@ -245,28 +247,34 @@ export let Animator = class {
     }
 
     let offset = renderOffset[vertical ? 1 : 0];
+    // The visible art, not the texture: transparent padding around an
+    // off-centre icon is no obstacle, and normalization keeps the art
+    // within CONTENT_TARGET of the slot.
     layout.icons.forEach((icon, k) => {
-      let r = icon._renderer;
-      let start = (vertical ? r.y : r.x) + offset;
-      let size = vertical ? r.height * r.scaleY : r.width * r.scaleX;
+      let slot = icon._slotSize;
+      let pad = ((1 - CONTENT_TARGET) / 2) * slot;
+      let start = (vertical ? icon._slotY : icon._slotX) + offset + pad;
       layout.iconShownStart[k] = start;
-      layout.iconShownEnd[k] = start + size;
+      layout.iconShownEnd[k] = start + slot * CONTENT_TARGET;
     });
     layout.fitSeparators(thickness + 0.5);
 
+    // the platter reaches deeper towards the screen edge than the dash does
+    let [ox, oy] = outward(dock._position);
+    let lean = dock._platterCentreShift || 0;
     layout.sepActors.forEach((actor, j) => {
       let size = layout.sepFitSize[j];
       // across the dock the line stays centred on the platter (its CENTER
       // alignment in the dash slot, see Dock._inspectIcon)
       let shift = layout.sepFitCenter[j] - layout.sepRest[j];
       if (vertical) {
-        actor.translationX = 0;
+        actor.translationX = ox * lean;
         actor.translationY = shift;
         actor.width = crossSize;
         actor.height = size;
       } else {
         actor.translationX = shift;
-        actor.translationY = 0;
+        actor.translationY = oy * lean;
         actor.width = size;
         actor.height = crossSize;
       }
@@ -444,8 +452,8 @@ export let Animator = class {
     run.edgeDistance = dock._edge_distance;
     run.rise = ext.animation_rise * ANIM_ICON_RAISE;
     run.magnify = ext.animation_magnify * ANIM_ICON_SCALE;
-    if (run.animated && run.edgeDistance < 0) {
-      run.edgeDistance = 0;
+    if (run.animated) {
+      run.edgeDistance = animatedEdgeDistance(run.edgeDistance, dock._outerGrowth);
     }
     run.scaleAtMax = 1.0 + run.magnify;
 
@@ -567,8 +575,9 @@ export let Animator = class {
     // none has run since the last frame is its offset cleared. The flag is
     // consumed below, after the renderer has seen it.
     if (icon._appwell) {
-      run.didBounce = icon._appwell._bounce;
-      if (!run.didBounce) zeroTranslation(icon._appwell);
+      const bouncing = icon._appwell._bounce;
+      run.didBounce = run.didBounce || bouncing;
+      if (!bouncing) zeroTranslation(icon._appwell);
     }
   }
 

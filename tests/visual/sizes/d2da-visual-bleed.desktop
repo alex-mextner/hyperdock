@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=bleed
+Exec=true
+Icon=@ICONDIR@/bleed.svg
+Terminal=false
