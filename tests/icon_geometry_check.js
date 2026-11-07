@@ -203,7 +203,9 @@ function disc(size, fraction, cx = size / 2, cy = size / 2, rowPad = 0) {
 // #84: every option of the running-indicator-style setting (the schema default
 // is index 0, 'default') must resolve to a style apps/dot.js has a draw method for
 {
+  // 'none' is the one option that draws nothing on purpose (it has no draw method)
   const DRAWN = new Set([
+    'none',
     'dots', 'dot', 'dashes', 'dash', 'squares', 'square', 'segmented', 'solid',
     'triangles', 'triangle', 'diamonds', 'diamond', 'binary',
   ]);

@@ -82,7 +82,6 @@ export async function importWithStubs(modulePath, options = {}) {
     IMPORT_RE,
     (statement, head, quote, specifier) => {
       if (real.has(specifier) && !(specifier in stubs)) return statement;
-      if (specifier.startsWith('.') && real.has(specifier)) return statement;
       let url = stubUrls.get(specifier);
       if (!url) {
         const name = `stub_${counter++}.js`;

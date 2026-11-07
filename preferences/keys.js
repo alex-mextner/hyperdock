@@ -496,8 +496,9 @@ export const SettingsKeys = (patch) => {
         'diamonds',
         'diamond',
         'binary',
+        'none',
       ],
-      test: { values: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13] },
+      test: { values: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14] },
     },
     'running-indicator-color': {
       default_value: [1, 1, 1, 1],

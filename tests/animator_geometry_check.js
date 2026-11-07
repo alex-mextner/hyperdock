@@ -74,22 +74,44 @@ for (const position of Object.keys(EDGES)) {
   const growth = 12.9;
   const edgeDistance = 3.9;
   const run = { vertical: false, edge: { bottom: true, right: false }, iconSize: 48, scaleFactor: 1, edgeDistance };
-  const dock = (platter) => ({
+  const dock = (platter, autohide = false) => ({
     _outerGrowth: growth,
     struts: { width: 0, height: 0, x: 0, y: 0 },
-    _background: { opacity: platter ? 255 : 0, width: platter ? 200 : 0, height: platter ? 60 : 0, x: 0, y: 0 },
-    extension: { autohide_dash: false },
+    // a lone icon leaves the size of an earlier platter on the background
+    _background: { opacity: platter ? 255 : 0, width: 200, height: 60, x: 0, y: 0 },
+    extension: { autohide_dash: autohide },
     _monitor: { x: 0, y: 0 },
     x: 0, y: 700, width: 1200, height: 100,
   });
   const alone = dock(false);
-  updateStruts(alone, run);
+  updateStruts(alone, run, false);
   check(Math.abs(alone.struts.height - (48 * 0.2 + edgeDistance)) < 1e-9,
     `a lone icon's strut keeps the lift (${alone.struts.height.toFixed(2)} px)`);
   const row = dock(true);
-  updateStruts(row, run);
+  updateStruts(row, run, true);
   check(Math.abs(row.struts.height - (60 + 48 * 0.2 + edgeDistance - growth)) < 1e-9,
     `with a platter the strut follows the platter (${row.struts.height.toFixed(2)} px)`);
+  // autohide: a lone icon reserves the whole edge, not the span of a stale platter
+  const hidden = dock(false, true);
+  hidden._background.x = 500;
+  updateStruts(hidden, run, false);
+  check(hidden.struts.x !== 500 && hidden.struts.width === hidden.width,
+    `autohidden lone icon reserves the whole edge (x ${hidden.struts.x}, width ${hidden.struts.width})`);
+}
+
+// a drag that ended (cancelled, dropped in place) leaves `_dragged` set: the
+// icon's running dots must come back; only while it is dragged are they hidden
+{
+  const r = await rig('bottom');
+  const icon = r.dock._icons[0];
+  r.dock._dragged = icon._icon;
+  r.dock._dragging = true;
+  for (let i = 0; i < 4; i++) frame(r, r.dock.pointerAway());
+  const dots = r.animator._dots[0];
+  check(dots.visible === false, 'dots of the dragged icon are hidden while dragging');
+  r.dock._dragging = false;
+  for (let i = 0; i < 4; i++) frame(r, r.dock.pointerAway());
+  check(dots.visible === true, 'dots are back once the drag ended, though _dragged is still set');
 }
 
 finish();

@@ -1046,6 +1046,7 @@
       <item translatable="yes">Diamonds</item>
       <item translatable="yes">Diamond</item>
       <item translatable="yes">Binary</item>
+      <item translatable="yes">None</item>
     </items>
   </object>
   <object class="GtkStringList" id="notification-badge-style-model">

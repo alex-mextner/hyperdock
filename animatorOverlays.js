@@ -44,7 +44,7 @@ export function newDotsData() {
 //! ***badge location at scaling is messed up***
 export function updateBadge(badge, icon, dock, data) {
   badge.hide();
-  if (icon._icon == dock._dragged) return;
+  if (icon._icon == dock._dragged && dock._dragging) return;
   badgeContent(dock, icon, data);
   if (!(data.noticesCount > 0 || data.progress >= 0)) return;
 
@@ -68,7 +68,7 @@ function openWindows(dock, icon) {
 //! ***dot requires a little more aligning at dock position other than bottom***
 export function updateDots(dots, icon, dock, vertical, data) {
   dots.hide();
-  if (icon._icon == dock._dragged) return;
+  if (icon._icon == dock._dragged && dock._dragging) return;
   const appCount = openWindows(dock, icon);
   if (!(appCount > 0 && icon._slotSize > 0)) return;
 
