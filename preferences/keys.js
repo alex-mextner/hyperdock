@@ -340,6 +340,10 @@ export const SettingsKeys = (patch) => {
       default_value: false,
       widget_type: 'switch',
     },
+    'stack-preview-sushi': {
+      default_value: true,
+      widget_type: 'switch',
+    },
     'file-drops': {
       default_value: false,
       widget_type: 'switch',

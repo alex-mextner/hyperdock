@@ -16,6 +16,7 @@ import * as Compat from './compat.js';
 import { layoutScenario, widthScenario } from './layoutScenarios.js';
 import { stacksScenario } from './stackScenarios.js';
 import { appGridPileScenario } from './appGridPileScenarios.js';
+import { stackPreviewScenario } from './stackPreviewScenarios.js';
 
 let started = false;
 let stopped = false;
@@ -135,6 +136,7 @@ const SCENARIOS = {
   width: (ext) => widthScenario(ext, helpers),
   stacks: (ext) => stacksScenario(ext, helpers),
   appgrid: (ext) => appGridPileScenario(ext, helpers),
+  'stackint-preview': (ext) => stackPreviewScenario(ext, helpers),
 };
 
 // Called by probe() after the first enable
