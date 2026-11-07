@@ -4,7 +4,8 @@
 # keyboard sends Super+Space (the input-source shortcut) and a tap of Super, and the
 # check fails unless the input source switched and the tap closed the popover and opened
 # the overview (inputGrabScenarios.js, scenario `inputgrab`). Escape, typing and a click
-# outside are checked too.
+# outside are checked too. With somebody else's popup on top of the popover (a pushed modal grab,
+# the capture UI opened by PrintScreen, over the dropdown) a tap of Super must open nothing and close nothing.
 #
 # Usage: tools/input-grab-shell.sh
 # Env: D2DA_STACKS_OUT  where the log and PNGs go (default ./stacks-out)

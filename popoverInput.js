@@ -12,6 +12,14 @@
 // could not take a second grab on top of ours). A tap of Super is the
 // 'overlay-key' keybinding, allowed only in NORMAL and OVERVIEW, so while a
 // popover is open it is let through POPUP too, and only then.
+//
+// POPUP is also the mode of every other popup the Shell opens, and a keyboard
+// shortcut can open one on top of a dock popover (PrintScreen's capture UI,
+// Super+V's calendar, Super+S's quick settings). The allowance above is a mask
+// per mode, blind to whose grab is on top, so a second filter, run by the
+// window manager after the Shell's own, refuses 'overlay-key' unless the grab
+// on top of the modal stack belongs to a dock popover: stacked over a foreign
+// popup, a Super tap is ignored as in the stock Shell.
 
 import Shell from 'gi://Shell';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
@@ -28,40 +36,82 @@ export function overlayKeyModes(open) {
   return open > 0 ? OVERLAY_KEY_WITH_POPOVER : OVERLAY_KEY_AT_REST;
 }
 
-// Counts the open popovers and tells the window manager about each change.
-// `allow(name, modes)` is Main.wm.allowKeybinding.
+const OVERLAY_KEY = 'overlay-key';
+
+// Tracks the open popovers' grab actors, tells the window manager when Super may
+// work under their mode, and vetoes it while somebody else's grab is on top.
+//   allow(name, modes)    Main.wm.allowKeybinding
+//   watchFilter(veto)     calls veto(bindingName) on every keybinding the Shell let through
+//                         (true: drop it) and returns what stops the watching
+//   topGrabActor()        the actor of the grab on top of the modal stack, or null
+//   actionMode()          the action mode of the grab on top (Main.actionMode)
 export class OverlayKeyGate {
-  constructor(allow) {
+  constructor({ allow, watchFilter, topGrabActor, actionMode }) {
     this._allow = allow;
-    this._open = 0;
+    this._watchFilter = watchFilter;
+    this._topGrabActor = topGrabActor;
+    this._actionMode = actionMode;
+    this._owners = new Map(); // grab actor -> popovers open on it
+    this._stopWatching = null;
   }
 
-  // A popover opened. The returned function (once) says it closed.
-  acquire() {
-    this._open++;
+  // A popover opened with its grab on `actor`. The returned function (once)
+  // says it closed.
+  acquire(actor) {
+    this._owners.set(actor, (this._owners.get(actor) ?? 0) + 1);
     this._sync();
     let released = false;
     return () => {
       if (released) return;
       released = true;
-      this._open--;
+      const left = this._owners.get(actor) - 1;
+      if (left > 0) this._owners.set(actor, left);
+      else this._owners.delete(actor);
       this._sync();
     };
   }
 
+  // true: drop this keybinding (called after the Shell's own filter let it through). Only
+  // the POPUP allowance is ours to take back: in any other mode the Shell's own rule stands.
+  vetoes(name) {
+    return (
+      name === OVERLAY_KEY &&
+      this._actionMode() === POPOVER_ACTION_MODE &&
+      !this._owners.has(this._topGrabActor())
+    );
+  }
+
   _sync() {
-    this._allow('overlay-key', overlayKeyModes(this._open));
+    const open = this._owners.size;
+    this._allow(OVERLAY_KEY, overlayKeyModes(open));
+    if (open > 0 && !this._stopWatching) {
+      this._stopWatching = this._watchFilter((name) => this.vetoes(name));
+    } else if (open === 0 && this._stopWatching) {
+      this._stopWatching();
+      this._stopWatching = null;
+    }
   }
 }
 
-const gate = new OverlayKeyGate((name, modes) => Main.wm.allowKeybinding(name, modes));
+const gate = new OverlayKeyGate({
+  allow: (name, modes) => Main.wm.allowKeybinding(name, modes),
+  // filter-keybinding stops at the first handler that returns true, so this one
+  // (connected later than the Shell's) only ever sees what the Shell allowed
+  watchFilter: (veto) => {
+    const wm = global.window_manager;
+    const id = wm.connect('filter-keybinding', (_wm, binding) => veto(binding.get_name()));
+    return () => wm.disconnect(id);
+  },
+  topGrabActor: () => Main.modalActorFocusStack.at(-1)?.actor ?? null,
+  actionMode: () => Main.actionMode,
+});
 
 // Opens `actor`'s modal grab for a dock popover. Returns the grab for
 // Main.popModal and `release`, which the popover calls when it closes (it also
 // runs if the actor is destroyed first).
 export function pushPopoverGrab(actor) {
   const grab = Main.pushModal(actor, { actionMode: POPOVER_ACTION_MODE });
-  const release = gate.acquire();
+  const release = gate.acquire(actor);
   actor.connect('destroy', release);
   return { grab, release };
 }
@@ -94,7 +144,7 @@ export function attachMenuToOverlayKey(menu) {
   let stopListening = null;
   const settle = (open) => {
     if (open && !release) {
-      release = gate.acquire();
+      release = gate.acquire(menu.actor);
       stopListening = closeOnOverviewTransition(() => menu.close(false));
     } else if (!open && release) {
       release();

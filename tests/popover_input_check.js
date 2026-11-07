@@ -32,17 +32,91 @@ check((overlayKeyModes(1) & POPOVER_ACTION_MODE) !== 0, 'with a popover open Sup
 check((overlayKeyModes(1) & ActionMode.NORMAL) !== 0 && (overlayKeyModes(1) & ActionMode.OVERVIEW) !== 0, 'Super keeps working in NORMAL and OVERVIEW');
 check(overlayKeyModes(2) === overlayKeyModes(1), 'the modes do not depend on how many popovers are open');
 
-const calls = [];
-const gate = new OverlayKeyGate((name, modes) => calls.push([name, modes]));
-const first = gate.acquire();
-check(calls.length === 1 && calls[0][0] === 'overlay-key' && calls[0][1] === overlayKeyModes(1), 'the first popover to open allows Super');
-const second = gate.acquire();
-first();
-check(calls.at(-1)[1] === overlayKeyModes(1), 'Super stays allowed while another popover is open');
-first();
-check(calls.at(-1)[1] === overlayKeyModes(1), 'a popover releasing twice does not close the other one early');
-second();
-check(calls.at(-1)[1] === overlayKeyModes(0), 'the last popover closing restores the Shell\'s own modes');
+// a gate wired to fakes: what the window manager was told, the veto it would call, the top grab
+function fakeGate() {
+  const f = { calls: [], veto: null, watching: 0, top: null, mode: POPOVER_ACTION_MODE };
+  f.gate = new OverlayKeyGate({
+    allow: (name, modes) => f.calls.push([name, modes]),
+    watchFilter: (veto) => {
+      f.veto = veto;
+      f.watching++;
+      return () => {
+        f.veto = null;
+        f.watching--;
+      };
+    },
+    topGrabActor: () => f.top,
+    actionMode: () => f.mode,
+  });
+  return f;
+}
+
+{
+  const { gate, calls } = fakeGate();
+  const a = {};
+  const b = {};
+  const first = gate.acquire(a);
+  check(calls.length === 1 && calls[0][0] === 'overlay-key' && calls[0][1] === overlayKeyModes(1), 'the first popover to open allows Super');
+  const second = gate.acquire(b);
+  first();
+  check(calls.at(-1)[1] === overlayKeyModes(1), 'Super stays allowed while another popover is open');
+  first();
+  check(calls.at(-1)[1] === overlayKeyModes(1), 'a popover releasing twice does not close the other one early');
+  second();
+  check(calls.at(-1)[1] === overlayKeyModes(0), 'the last popover closing restores the Shell\'s own modes');
+}
+
+// ---- Super over somebody else's grab ----------------------------------------------------
+{
+  const f = fakeGate();
+  const popover = {};
+  const foreign = {};
+  const release = f.gate.acquire(popover);
+  check(f.watching === 1, 'the keybinding filter is watched while a popover is open');
+  f.top = popover;
+  check(f.veto('overlay-key') === false, 'Super works with the dock popover on top of the grab stack');
+  f.top = foreign;
+  check(f.veto('overlay-key') === true, 'Super is dropped when another popup (capture UI, panel menu) is on top');
+  check(f.veto('toggle-message-tray') === false && f.veto('switch-input-source') === false, 'every other keybinding is left to the Shell\'s own filter');
+  f.top = null;
+  check(f.veto('overlay-key') === true, 'Super is dropped with no grab on top while the mode is still POPUP (a stale allowance)');
+  f.mode = ActionMode.NORMAL;
+  check(f.veto('overlay-key') === false, 'outside POPUP the Shell\'s own rule stands (a menu that opened without a grab)');
+  f.mode = POPOVER_ACTION_MODE;
+  f.top = popover;
+  release();
+  check(f.watching === 0 && f.veto === null, 'the filter is not watched once the last popover closed');
+}
+
+{
+  // two popovers on one actor: closing one leaves the actor counted for the other
+  const f = fakeGate();
+  const shared = {};
+  const first = f.gate.acquire(shared);
+  const second = f.gate.acquire(shared);
+  f.top = shared;
+  first();
+  check(f.veto('overlay-key') === false, 'a second popover on the same actor still lets Super through after the first closed');
+  second();
+  check(f.watching === 0, 'the filter is released with the last popover of a shared actor');
+}
+
+{
+  // two popovers on two actors: the top one decides
+  const f = fakeGate();
+  const one = {};
+  const two = {};
+  const releaseOne = f.gate.acquire(one);
+  const releaseTwo = f.gate.acquire(two);
+  check(f.watching === 1, 'two open popovers share one filter watch');
+  f.top = one;
+  check(f.veto('overlay-key') === false, 'the older popover on top lets Super through');
+  releaseOne();
+  check(f.veto('overlay-key') === true, 'a closed popover\'s actor no longer counts');
+  f.top = two;
+  check(f.veto('overlay-key') === false, 'the remaining popover still lets Super through');
+  releaseTwo();
+}
 
 // ---- closing with the overview ----------------------------------------------------------
 const overview = globalThis.fakeOverview;

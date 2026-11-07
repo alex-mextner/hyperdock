@@ -14,6 +14,7 @@ import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Shell from 'gi://Shell';
+import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as Keyboard from 'resource:///org/gnome/shell/ui/status/keyboard.js';
 import { pointerFor } from './stackScenarios.js';
@@ -70,6 +71,8 @@ const sourceId = () => Keyboard.getInputSourceManager().currentSource?.id ?? nul
 function stackCase(dock, ext, d, h) {
   return {
     name: 'stack dropdown',
+    // the Shell's PopupMenus close on 'system-modal-opened', which the capture UI emits; the dropdown does not
+    survivesCaptureUi: true,
     async open() {
       ext._settings.set_int('downloads-stack-view', 1);
       await h.sleep(2500);
@@ -163,6 +166,52 @@ async function exercise(c, k, d, h) {
   await h.sleep(500);
   h.check(S, `${label}: a click outside closes it`, !c.isOpen());
   await c.close();
+
+  // Somebody else's popup opened on top of this one (what a drag, PrintScreen's capture UI or a
+  // panel menu do): a tap of Super must not open the overview over it, and it must not close this
+  // popover, which stays usable once the other popup is gone
+  await c.open();
+  h.check(S, `${label}: opens for the foreign grab`, c.isOpen());
+  const foreign = new St.Widget({ reactive: true });
+  Main.uiGroup.add_child(foreign);
+  const foreignGrab = Main.pushModal(foreign, { actionMode: Shell.ActionMode.POPUP });
+  await h.sleep(300);
+  h.check(S, `${label}: another popup on top does not close it`, c.isOpen());
+  await k.chord([KEY.KEY_Super_L]);
+  await h.sleep(1200);
+  h.check(S, `${label}: a tap of Super over another popup does not open the overview`, !Main.overview.visible, { visible: Main.overview.visible });
+  h.check(S, `${label}: a tap of Super over another popup does not close it`, c.isOpen());
+  Main.popModal(foreignGrab);
+  foreign.destroy();
+  await h.sleep(300);
+  h.check(S, `${label}: it is still open when the other popup is gone`, c.isOpen());
+  await k.chord([KEY.KEY_Super_L]);
+  await h.sleep(1200);
+  h.check(S, `${label}: a tap of Super works again once it is on top`, Main.overview.visible && !c.isOpen(), { visible: Main.overview.visible, open: c.isOpen() });
+  await h.closeOverview();
+  await c.close();
+
+  // the same with the real capture UI, opened by the real PrintScreen key (only where the popover
+  // survives the capture UI opening: the Shell closes its PopupMenus first)
+  if (c.survivesCaptureUi) {
+    await c.open();
+    await k.chord([KEY.KEY_Print]);
+    await h.sleep(2500);
+    h.check(S, `${label}: PrintScreen opens the capture UI over it`, Main.screenshotUI.visible, { visible: Main.screenshotUI.visible });
+    h.check(S, `${label}: the capture UI did not close the popover below it`, c.isOpen());
+    await k.chord([KEY.KEY_Super_L]);
+    await h.sleep(1200);
+    h.check(S, `${label}: a tap of Super over the capture UI does not open the overview`, !Main.overview.visible, { visible: Main.overview.visible });
+    h.check(S, `${label}: a tap of Super over the capture UI does not close it`, c.isOpen());
+    await h.closeOverview();
+    if (Main.screenshotUI.visible) {
+      await k.chord([KEY.KEY_Escape]);
+      await h.sleep(800);
+    }
+    h.check(S, `${label}: Escape closes the capture UI`, !Main.screenshotUI.visible, { visible: Main.screenshotUI.visible });
+    h.check(S, `${label}: it is still open when the capture UI is gone`, c.isOpen());
+    await c.close();
+  }
 
   // Super with the overview already open leaves it, and the popover goes too
   Main.overview.show();
